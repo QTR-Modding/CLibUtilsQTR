@@ -1,3 +1,3 @@
-set(sources ${sources}
-	include/CLibUtilsQTR/Tasker.cpp
+set(sources
+	src/CLibUtilsQTR/Tasker.cpp
 )
