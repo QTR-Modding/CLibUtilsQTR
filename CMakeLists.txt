@@ -36,6 +36,7 @@ add_library(
 	${PROJECT_NAME}
 	INTERFACE
 	${headers}
+	${sources}
 	.clang-format
 )
 
