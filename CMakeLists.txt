@@ -18,14 +18,12 @@ endif()
 # ---- Add source files ----
 
 include(cmake/headerlist.cmake)
-include(cmake/sourcelist.cmake)
 
 source_group(
 	TREE
 		${CMAKE_CURRENT_SOURCE_DIR}
 	FILES
 		${headers}
-		${sources}
 )
 
 # ---- Create library ----
@@ -34,9 +32,8 @@ include(GNUInstallDirs)
 
 add_library(
 	${PROJECT_NAME}
-	STATIC
+	INTERFACE
 	${headers}
-	${sources}
 )
 
 add_library(
@@ -45,25 +42,18 @@ add_library(
 	${PROJECT_NAME}
 )
 
-find_package(clib_util REQUIRED)
 
 target_include_directories(
 	${PROJECT_NAME}
-	PUBLIC
+	INTERFACE
 	"$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
 	"$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
 
 target_compile_features(
 	${PROJECT_NAME}
-	PUBLIC
+	INTERFACE
 		cxx_std_23
-)
-
-target_link_libraries(
-	${PROJECT_NAME}
-	PUBLIC
-		clib_util::clib_util
 )
 
 # ---- Create an installable target ----
