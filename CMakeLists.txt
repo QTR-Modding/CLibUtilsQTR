@@ -34,10 +34,9 @@ include(GNUInstallDirs)
 
 add_library(
 	${PROJECT_NAME}
-	INTERFACE
+	STATIC
 	${headers}
 	${sources}
-	.clang-format
 )
 
 add_library(
@@ -48,14 +47,14 @@ add_library(
 
 target_include_directories(
 	${PROJECT_NAME}
-	INTERFACE
+	PUBLIC
 	"$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
 	"$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
 
 target_compile_features(
 	${PROJECT_NAME}
-	INTERFACE
+	PUBLIC
 		cxx_std_23
 )
 
