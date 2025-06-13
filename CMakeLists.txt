@@ -45,6 +45,8 @@ add_library(
 	${PROJECT_NAME}
 )
 
+find_package(clib_util REQUIRED)
+
 target_include_directories(
 	${PROJECT_NAME}
 	PUBLIC
@@ -56,6 +58,12 @@ target_compile_features(
 	${PROJECT_NAME}
 	PUBLIC
 		cxx_std_23
+)
+
+target_link_libraries(
+	${PROJECT_NAME}
+	PUBLIC
+		clib_util::clib_util
 )
 
 # ---- Create an installable target ----

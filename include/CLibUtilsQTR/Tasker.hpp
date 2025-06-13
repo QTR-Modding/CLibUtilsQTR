@@ -3,7 +3,6 @@
 
 #pragma once
 
-
 struct Task {
     std::chrono::steady_clock::time_point scheduled_time;
     std::function<void()> func;

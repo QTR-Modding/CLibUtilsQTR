@@ -1,7 +1,7 @@
 // Author: Quantumyilmaz
 // Year: 2025
 
-#include "Tasker.h"
+#include "Tasker.hpp"
 
 void Tasker::Start(const size_t num_threads) {
     std::lock_guard lock(mutex_);
@@ -84,7 +84,7 @@ void Tasker::WorkerLoop() {
                 }
             }
             catch (const std::exception& e) {
-				logger::error("Tasker: Exception in task execution: {}", e.what());
+				//logger::error("Tasker: Exception in task execution: {}", e.what());
 			}
             // After running, go back to the top of the loop to check again
             continue;
