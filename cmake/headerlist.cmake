@@ -1,3 +1,3 @@
 set(headers ${headers}
-	include/ClibUtilsQY/utils.hpp
+	include/CLibUtilsQTR/utils.hpp
 )
