@@ -1,3 +1,6 @@
+// Author: Quantumyilmaz
+// Year: 2025
+
 #pragma once
 
 namespace clib_utilsQTR {
