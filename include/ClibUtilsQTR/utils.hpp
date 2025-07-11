@@ -7,3 +7,5 @@
 #include "Papyrus.hpp"
 #include "Ticker.hpp"
 #include "Animations.hpp"
+#include "StringHelpers.hpp"
+#include "PresetHelpers.hpp"

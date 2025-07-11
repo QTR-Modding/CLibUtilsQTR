@@ -5,10 +5,12 @@
 #include <regex>
 #include <algorithm>
 #include <cctype>
+#include <ios>
+#include <sstream>
 
 namespace FormReader {
 
-	using FormID = uint32_t;
+	using FormID = RE::FormID;
 
     // Global masters list
     const std::vector<std::string> masters = {"00", "01", "02", "03", "04"};

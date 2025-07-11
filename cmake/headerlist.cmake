@@ -6,4 +6,6 @@ set(headers ${headers}
 	include/CLibUtilsQTR/Papyrus.hpp
 	include/CLibUtilsQTR/Ticker.hpp
 	include/CLibUtilsQTR/Animations.hpp
+	include/CLibUtilsQTR/StringHelpers.hpp
+	include/CLibUtilsQTR/PresetHelpers.hpp
 )
