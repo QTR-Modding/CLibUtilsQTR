@@ -5,3 +5,5 @@
 #include "FormReader.hpp"
 #include "Serialization.hpp"
 #include "Papyrus.hpp"
+#include "Ticker.hpp"
+#include "Animations.hpp"
