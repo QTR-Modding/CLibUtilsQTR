@@ -8,6 +8,8 @@
 
 namespace FormReader {
 
+	using FormID = uint32_t;
+
     // Global masters list
     const std::vector<std::string> masters = {"00", "01", "02", "03", "04"};
 
@@ -76,7 +78,7 @@ namespace FormReader {
                 {
                     esl = true;
                 }
-                else if (std::find(masters.begin(), masters.end(), firstTwoDigits) != masters.end())
+                else if (std::ranges::find(masters, firstTwoDigits) != masters.end())
                 {
                     mod = false;
                 }
@@ -125,17 +127,68 @@ namespace FormReader {
     }
 
 
-    inline uint32_t GetForm(const char* fileName, const uint32_t localId) {
+    inline FormID GetForm(const char* fileName, const uint32_t localId) {
         const auto dataHandler = RE::TESDataHandler::GetSingleton();
         const auto formId = dataHandler->LookupFormID(localId, fileName);
         return formId;
     }
 
-	uint32_t GetFormIDFromString(const std::string& input) {
-        uint32_t form_id_;
+    inline FormID GetFormIDFromString(const std::string& input) {
+        FormID form_id_;
         std::stringstream ss;
         ss << std::hex << input;
         ss >> form_id_;
         return form_id_;
+    }
+
+    inline bool isValidHexWithLength7or8(const char* input) { 
+        std::string inputStr(input);
+
+        if (inputStr.substr(0, 2) == "0x") {
+            // Remove "0x" from the beginning of the string
+            inputStr = inputStr.substr(2);
+        }
+
+        const std::regex hexRegex("^[0-9A-Fa-f]{7,8}$");  // Allow 7 to 8 characters
+        const bool isValid = std::regex_match(inputStr, hexRegex);
+        return isValid;
+    }
+
+    inline RE::TESForm* GetFormByID(const RE::FormID id, const std::string& editor_id="") {
+        if (!editor_id.empty()) {
+            if (auto* form = RE::TESForm::LookupByEditorID(editor_id)) return form;
+        }
+        if (const auto form = RE::TESForm::LookupByID(id)) return form;
+        return nullptr;
+    }
+
+	template <typename T>
+    T* GetFormByID(const RE::FormID id, const std::string& editor_id="") {
+        if (!editor_id.empty()) {
+			if (auto* form = RE::TESForm::LookupByEditorID<T>(editor_id)) return form;
+		}
+		if (const auto form = RE::TESForm::LookupByID<T>(id)) return form;
+        return nullptr;
+	}
+
+    inline FormID GetFormEditorIDFromString(const std::string& formEditorId)
+    {
+        static std::string delimiter = "~";
+	    const auto plugin_and_localid = FormReader::split(formEditorId, delimiter);
+	    if (plugin_and_localid.size() == 2) {
+		    const auto& plugin_name = plugin_and_localid[1];
+		    const auto local_id = FormReader::GetFormIDFromString(plugin_and_localid[0]);
+		    const auto formid = FormReader::GetForm(plugin_name.c_str(), local_id);
+		    if (const auto form = RE::TESForm::LookupByID(formid)) return form->GetFormID();
+	    }
+
+        if (isValidHexWithLength7or8(formEditorId.c_str())) {
+		    const auto form_id_ = FormReader::GetFormIDFromString(formEditorId);
+            if (const auto temp_form = GetFormByID(form_id_, "")) return temp_form->GetFormID();
+            return 0;
+        }
+        if (formEditorId.empty()) return 0;
+        if (const auto temp_form = GetFormByID(0, formEditorId)) return temp_form->GetFormID();
+        return 0;
     }
 }
