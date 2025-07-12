@@ -4,9 +4,9 @@
 #include "CLibUtilsQTR/Ticker.hpp"
 
 struct Animation {
-	RE::TESIdleForm* a_idle;
+	RE::TESIdleForm* a_idle=nullptr;
     std::string anim_name;
-	int t_wait_ms;
+	unsigned int t_wait_ms=0;
 };
 
 class Animator:
@@ -16,7 +16,7 @@ public RE::BSTEventSink<RE::BSAnimationGraphEvent>
     virtual RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent* a_event,
                                           RE::BSTEventSource<RE::BSAnimationGraphEvent>*)=0;
 
-	bool SendAnimationEvent(RE::Actor* a_actor, const char* AnimationString)
+	static bool SendAnimationEvent(RE::Actor* a_actor, const char* AnimationString)
     {
         if (const auto animGraphHolder = static_cast<RE::IAnimationGraphManagerHolder*>(a_actor)) {
             if (animGraphHolder->NotifyAnimationGraph(AnimationString)) {
