@@ -7,6 +7,7 @@
 #include <cctype>
 #include <ios>
 #include <sstream>
+#include "ClibUtil/editorID.hpp"
 
 namespace FormReader {
 
@@ -192,5 +193,12 @@ namespace FormReader {
         if (formEditorId.empty()) return 0;
         if (const auto temp_form = GetFormByID(0, formEditorId)) return temp_form->GetFormID();
         return 0;
+    }
+
+    inline std::string GetEditorID(FormID a_formid) {
+        if (auto a_form = GetFormByID(a_formid)) {
+            return clib_util::editorID::get_editorID(a_form);
+        }
+		return "";
     }
 }
