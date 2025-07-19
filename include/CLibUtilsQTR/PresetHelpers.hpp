@@ -30,6 +30,8 @@ namespace PresetHelpers {
 
 		        const auto file_name_without_extension = entry.path().stem().string();
 
+				formGroups[file_name_without_extension] = {};
+
                 std::string line;
                 while (std::getline(file, line)) {
                     // trim whitespace from the line
@@ -37,7 +39,7 @@ namespace PresetHelpers {
                     if (line.empty()) continue; // skip empty lines
 			        if (auto a_form = FormReader::GetFormEditorIDFromString(line); a_form>0) {
 						std::unique_lock lock(formGroups_mutex_);
-						formGroups[file_name_without_extension].insert(a_form);
+						formGroups.at(file_name_without_extension).insert(a_form);
 					}
 		        }
 	        }

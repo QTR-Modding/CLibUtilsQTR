@@ -161,7 +161,9 @@ namespace FormReader {
         if (!editor_id.empty()) {
             if (auto* form = RE::TESForm::LookupByEditorID(editor_id)) return form;
         }
-        if (const auto form = RE::TESForm::LookupByID(id)) return form;
+        if (id > 0) {
+            if (const auto form = RE::TESForm::LookupByID(id)) return form;
+        }
         return nullptr;
     }
 
@@ -170,12 +172,16 @@ namespace FormReader {
         if (!editor_id.empty()) {
 			if (auto* form = RE::TESForm::LookupByEditorID<T>(editor_id)) return form;
 		}
-		if (const auto form = RE::TESForm::LookupByID<T>(id)) return form;
+        if (id > 0) {
+		    if (const auto form = RE::TESForm::LookupByID<T>(id)) return form;
+        }
         return nullptr;
 	}
 
     inline FormID GetFormEditorIDFromString(const std::string& formEditorId)
     {
+        if (formEditorId.empty()) return 0;
+
         static std::string delimiter = "~";
 	    const auto plugin_and_localid = FormReader::split(formEditorId, delimiter);
 	    if (plugin_and_localid.size() == 2) {
@@ -186,12 +192,11 @@ namespace FormReader {
 	    }
 
         if (isValidHexWithLength7or8(formEditorId.c_str())) {
-		    const auto form_id_ = FormReader::GetFormIDFromString(formEditorId);
-            if (const auto temp_form = GetFormByID(form_id_, "")) return temp_form->GetFormID();
-            return 0;
+            if (const auto temp_form = GetFormByID(FormReader::GetFormIDFromString(formEditorId))) return temp_form->GetFormID();
         }
-        if (formEditorId.empty()) return 0;
+
         if (const auto temp_form = GetFormByID(0, formEditorId)) return temp_form->GetFormID();
+
         return 0;
     }
 
