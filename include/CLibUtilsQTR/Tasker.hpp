@@ -2,6 +2,9 @@
 // Year: 2025
 
 #pragma once
+#include <functional>
+#include <mutex>
+#include <queue>
 
 namespace clib_utilsQTR {
     struct Task {
@@ -82,6 +85,41 @@ namespace clib_utilsQTR {
             cv_.notify_one();
         }
 
+
+        /**
+         * @brief Schedules a task to be executed after a condition has been continuously true for a specified duration.
+         *
+         * This function repeatedly checks a user-provided condition at regular intervals. If the condition remains true 
+         * continuously for `duration_ms` milliseconds, the provided function `f` is executed. If at any point the condition
+         * returns false, the task chain is stopped.
+         *
+         * @tparam Condition A callable type that takes no parameters and returns a `bool`.  
+         * @tparam Func A callable type representing the task to be executed.
+         *
+         * @param cond The condition to be checked periodically. Must return a `bool`.
+         * @param duration_ms The duration in milliseconds for which the condition must remain continuously true before `f` is invoked.
+         * @param f The task to execute after the sustained condition is met.
+         * @param poll_interval_ms The interval in milliseconds between successive condition checks. Defaults to 50ms.
+         *
+         * @details 
+         * The function leverages `Tasker::PushTask` to schedule repeated checks on the condition. If the condition holds
+         * for the entirety of the `duration_ms` period, the task `f` will be called exactly once. If the condition becomes 
+         * false at any point before the duration elapses, no further checks are performed, and `f` will not be called.
+         *
+         * This mechanism is useful for scenarios where an action should only occur if a condition is stable over time, 
+         * such as sustained user input, stable sensor readings, or debounce logic.
+         *
+         * @note Requires `Condition` to be invocable and to return a `bool`. `Func` must be invocable with no parameters.
+         *
+         * @example
+         * @code
+         * PushSustainedTask(
+         *     []() { return IsButtonPressed(); }, // Condition
+         *     1000,                               // 1000 ms duration
+         *     []() { DoAction(); }                // Task to execute
+         * );
+         * @endcode
+         */
         template <typename Condition, typename Func>
         requires std::invocable<Condition> && std::is_same_v<std::invoke_result_t<Condition>, bool>
         static void PushSustainedTask(Condition cond, int duration_ms, Func f, int poll_interval_ms = 50) {
@@ -149,7 +187,7 @@ namespace clib_utilsQTR {
                             task.func();
                         }
                     }
-                    catch (const std::exception& e) {
+                    catch ([[maybe_unused]] const std::exception& e) {
 				        //logger::error("Tasker: Exception in task execution: {}", e.what());
 			        }
                     // After running, go back to the top of the loop to check again
