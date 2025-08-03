@@ -7,5 +7,7 @@ set(headers ${headers}
 	include/CLibUtilsQTR/Ticker.hpp
 	include/CLibUtilsQTR/Animations.hpp
 	include/CLibUtilsQTR/StringHelpers.hpp
-	include/CLibUtilsQTR/PresetHelpers.hpp
+	include/CLibUtilsQTR/PresetHelpers/PresetHelpers.hpp
+	include/CLibUtilsQTR/PresetHelpers/PresetHelpersTXT.hpp
+	include/CLibUtilsQTR/PresetHelpers/PresetHelpersYAML.hpp
 )
