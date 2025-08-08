@@ -5,6 +5,7 @@
 #include <functional>
 #include <mutex>
 #include <queue>
+#include "ClibUtil/singleton.hpp"
 
 namespace clib_utilsQTR {
     struct Task {
