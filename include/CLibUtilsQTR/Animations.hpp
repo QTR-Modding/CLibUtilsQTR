@@ -29,7 +29,6 @@ public RE::BSTEventSink<RE::BSAnimationGraphEvent>
 	bool PlayAnimation(const char* a_animation) {
         if (const auto a_actor = actor.get()) {
             a_actor->AddAnimationGraphEventSink(this);
-			logger::info("Playing animation {} on actor {}", a_animation, a_actor->GetDisplayFullName());
             return SendAnimationEvent(a_actor, a_animation);
         }
         return false;
