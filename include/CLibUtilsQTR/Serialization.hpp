@@ -33,7 +33,7 @@ namespace Serialization {
         virtual bool Save(SKSE::SerializationInterface*, std::uint32_t,
                           std::uint32_t) {return false;}
         virtual bool Save(SKSE::SerializationInterface*) {return false;}
-        virtual bool Load(SKSE::SerializationInterface*, const bool) {return false;}
+        virtual bool Load(SKSE::SerializationInterface*) {return false;}
 
         void Clear() {
             Locker locker(m_Lock);
