@@ -6,10 +6,8 @@
 #include "CLibUtilsQTR/FormReader.hpp"
 
 namespace PresetHelpers {
+    using FormID = FormReader::FormID;
 
-	using FormID = FormReader::FormID;
-
-	inline std::shared_mutex formGroups_mutex_;
+    inline std::shared_mutex formGroups_mutex_;
     inline std::unordered_map<std::string, std::unordered_set<FormID>> formGroups;
-
 } // namespace PresetHelpers

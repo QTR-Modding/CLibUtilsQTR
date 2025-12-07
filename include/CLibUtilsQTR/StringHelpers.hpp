@@ -1,7 +1,6 @@
 #pragma once
 
 namespace StringHelpers {
-
     template <typename T>
     std::string join(const T& container, const std::string_view& delimiter) {
         std::ostringstream oss;
@@ -54,31 +53,31 @@ namespace StringHelpers {
             std::ranges::transform(lowerStr, lowerStr.begin(),
                                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (lowerInput.find(lowerStr) != std::string::npos) {
-                return true;  // The input string includes one of the strings
+                return true; // The input string includes one of the strings
             }
         }
-        return false;  // None of the strings in 'strings' were found in the input string
+        return false; // None of the strings in 'strings' were found in the input string
     }
 
     inline bool includesWord(const std::string& input, const std::vector<std::string>& strings) {
         std::string lowerInput = toLowercase(input);
         lowerInput = replaceLineBreaksWithSpace(lowerInput);
         lowerInput = trim(lowerInput);
-        lowerInput = " " + lowerInput + " ";  // Add spaces to the beginning and end of the string
+        lowerInput = " " + lowerInput + " "; // Add spaces to the beginning and end of the string
 
         for (const auto& str : strings) {
             std::string lowerStr = str;
             lowerStr = trim(lowerStr);
-            lowerStr = " " + lowerStr + " ";  // Add spaces to the beginning and end of the string
+            lowerStr = " " + lowerStr + " "; // Add spaces to the beginning and end of the string
             std::ranges::transform(lowerStr, lowerStr.begin(),
                                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
             // logger::trace("lowerInput: {} lowerStr: {}", lowerInput, lowerStr);
 
             if (lowerInput.find(lowerStr) != std::string::npos) {
-                return true;  // The input string includes one of the strings
+                return true; // The input string includes one of the strings
             }
         }
-        return false;  // None of the strings in 'strings' were found in the input string
+        return false; // None of the strings in 'strings' were found in the input string
     };
 } // namespace StringHelpers

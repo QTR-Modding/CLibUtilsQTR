@@ -10,8 +10,7 @@
 #include "ClibUtil/editorID.hpp"
 
 namespace FormReader {
-
-	using FormID = RE::FormID;
+    using FormID = RE::FormID;
 
     // Global masters list
     const std::vector<std::string> masters = {"00", "01", "02", "03", "04"};
@@ -20,10 +19,10 @@ namespace FormReader {
     inline std::string clean(const std::string& input) {
         // Remove all non-alphanumeric characters
         std::string s = std::regex_replace(input, std::regex("[^a-zA-Z0-9]+"), "");
-        
+
         // Convert to uppercase
-        std::ranges::transform(s.begin(), s.end(), s.begin(), ::toupper);
-        
+        std::ranges::transform(s.begin(), s.end(), s.begin(), toupper);
+
         // Trim whitespace from both ends
         s.erase(s.begin(), std::ranges::find_if(s.begin(), s.end(), [](const unsigned char ch) {
             return !std::isspace(ch);
@@ -31,13 +30,12 @@ namespace FormReader {
         s.erase(std::ranges::find_if(s.rbegin(), s.rend(), [](const unsigned char ch) {
             return !std::isspace(ch);
         }).base(), s.end());
-        
+
         return s;
     }
 
     // Struct to hold the result
-    struct Result
-    {
+    struct Result {
         std::string output;
         bool error;
         bool isMod;
@@ -50,11 +48,10 @@ namespace FormReader {
         res.error = true;
         res.isMod = true;
 
-        if (!input.empty())
-        {
+        if (!input.empty()) {
             std::string result = clean(input);
             std::string modName = name;
-            
+
             // Trim modName
             modName.erase(modName.begin(), std::find_if(modName.begin(), modName.end(), [](const unsigned char ch) {
                 return !std::isspace(ch);
@@ -63,13 +60,11 @@ namespace FormReader {
                 return !std::isspace(ch);
             }).base(), modName.end());
 
-            if (result.length() != 8)
-            {
+            if (result.length() != 8) {
                 res.output += "input must be 8 characters long";
             }
 
-            if (res.output.empty())
-            {
+            if (res.output.empty()) {
                 res.error = false;
 
                 std::string firstTwoDigits = result.substr(0, 2);
@@ -77,39 +72,28 @@ namespace FormReader {
                 bool esl = false;
                 bool mod = true;
 
-                if (firstTwoDigits == "FE")
-                {
+                if (firstTwoDigits == "FE") {
                     esl = true;
-                }
-                else if (std::ranges::find(masters, firstTwoDigits) != masters.end())
-                {
+                } else if (std::ranges::find(masters, firstTwoDigits) != masters.end()) {
                     mod = false;
                 }
 
                 res.isMod = mod;
 
-                if (mod)
-                {
-                    if (esl)
-                    {
+                if (mod) {
+                    if (esl) {
                         result = result.substr(5);
-                    }
-                    else
-                    {
+                    } else {
                         result = result.substr(2);
                     }
                 }
 
-                if (mod && modName.empty())
-                {
+                if (mod && modName.empty()) {
                     res.error = true;
                     res.output = "Mod name required for non base game files";
-                }
-                else
-                {
+                } else {
                     size_t i = 0;
-                    while (i < result.length() && result[i] == '0')
-                    {
+                    while (i < result.length() && result[i] == '0') {
                         i++;
                     }
 
@@ -122,11 +106,10 @@ namespace FormReader {
     }
 
 
-    inline std::vector<std::string> split(const std::string& a_str, std::string_view a_delimiter)
-    {
-        auto range = a_str | std::ranges::views::split(a_delimiter) | 
-                          std::ranges::views::transform([](auto&& r) { return std::string_view(r); });
-        return { range.begin(), range.end() };
+    inline std::vector<std::string> split(const std::string& a_str, std::string_view a_delimiter) {
+        auto range = a_str | std::ranges::views::split(a_delimiter) |
+                     std::ranges::views::transform([](auto&& r) { return std::string_view(r); });
+        return {range.begin(), range.end()};
     }
 
 
@@ -144,7 +127,7 @@ namespace FormReader {
         return form_id_;
     }
 
-    inline bool isValidHexWithLength7or8(const char* input) { 
+    inline bool isValidHexWithLength7or8(const char* input) {
         std::string inputStr(input);
 
         if (inputStr.substr(0, 2) == "0x") {
@@ -152,12 +135,12 @@ namespace FormReader {
             inputStr = inputStr.substr(2);
         }
 
-        const std::regex hexRegex("^[0-9A-Fa-f]{7,8}$");  // Allow 7 to 8 characters
+        const std::regex hexRegex("^[0-9A-Fa-f]{7,8}$"); // Allow 7 to 8 characters
         const bool isValid = std::regex_match(inputStr, hexRegex);
         return isValid;
     }
 
-    inline RE::TESForm* GetFormByID(const RE::FormID id, const std::string& editor_id="") {
+    inline RE::TESForm* GetFormByID(const RE::FormID id, const std::string& editor_id = "") {
         if (!editor_id.empty()) {
             if (auto* form = RE::TESForm::LookupByEditorID(editor_id)) return form;
         }
@@ -167,22 +150,22 @@ namespace FormReader {
         return nullptr;
     }
 
-	template <typename T>
-    T* GetFormByID(const RE::FormID id, const std::string& editor_id="") {
+    template <typename T>
+    T* GetFormByID(const RE::FormID id, const std::string& editor_id = "") {
         if (!editor_id.empty()) {
-			if (auto* form = RE::TESForm::LookupByEditorID<T>(editor_id)) return form;
-		}
+            if (auto* form = RE::TESForm::LookupByEditorID<T>(editor_id)) return form;
+        }
         if (id > 0) {
-		    if (const auto form = RE::TESForm::LookupByID<T>(id)) return form;
+            if (const auto form = RE::TESForm::LookupByID<T>(id)) return form;
         }
         return nullptr;
-	}
+    }
 
     inline RE::TESForm* GetFormFromString(const std::string& formEditorId) {
         if (formEditorId.empty()) return nullptr;
 
         static std::string delimiter = "~";
-        const auto plugin_and_localid = FormReader::split(formEditorId, delimiter);
+        const auto plugin_and_localid = split(formEditorId, delimiter);
         if (plugin_and_localid.size() == 2) {
             const auto& plugin_name = plugin_and_localid[1];
             const auto local_id = FormReader::GetFormIDFromString(plugin_and_localid[0]);
@@ -211,6 +194,6 @@ namespace FormReader {
         if (auto a_form = GetFormByID(a_formid)) {
             return clib_util::editorID::get_editorID(a_form);
         }
-		return "";
+        return "";
     }
 }
