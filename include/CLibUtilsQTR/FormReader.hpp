@@ -178,25 +178,32 @@ namespace FormReader {
         return nullptr;
 	}
 
-    inline FormID GetFormEditorIDFromString(const std::string& formEditorId)
-    {
-        if (formEditorId.empty()) return 0;
+    inline RE::TESForm* GetFormFromString(const std::string& formEditorId) {
+        if (formEditorId.empty()) return nullptr;
 
         static std::string delimiter = "~";
-	    const auto plugin_and_localid = FormReader::split(formEditorId, delimiter);
-	    if (plugin_and_localid.size() == 2) {
-		    const auto& plugin_name = plugin_and_localid[1];
-		    const auto local_id = FormReader::GetFormIDFromString(plugin_and_localid[0]);
-		    const auto formid = FormReader::GetForm(plugin_name.c_str(), local_id);
-		    if (const auto form = RE::TESForm::LookupByID(formid)) return form->GetFormID();
-	    }
-
-        if (isValidHexWithLength7or8(formEditorId.c_str())) {
-            if (const auto temp_form = GetFormByID(FormReader::GetFormIDFromString(formEditorId))) return temp_form->GetFormID();
+        const auto plugin_and_localid = FormReader::split(formEditorId, delimiter);
+        if (plugin_and_localid.size() == 2) {
+            const auto& plugin_name = plugin_and_localid[1];
+            const auto local_id = FormReader::GetFormIDFromString(plugin_and_localid[0]);
+            const auto formid = FormReader::GetForm(plugin_name.c_str(), local_id);
+            if (const auto form = RE::TESForm::LookupByID(formid)) return form;
         }
 
-        if (const auto temp_form = GetFormByID(0, formEditorId)) return temp_form->GetFormID();
+        if (isValidHexWithLength7or8(formEditorId.c_str())) {
+            if (const auto temp_form = GetFormByID(FormReader::GetFormIDFromString(formEditorId)))
+                return temp_form;
+        }
 
+        if (const auto temp_form = GetFormByID(0, formEditorId)) return temp_form;
+
+        return nullptr;
+    }
+
+    inline FormID GetFormEditorIDFromString(const std::string& formEditorId) {
+        if (auto a_form = GetFormFromString(formEditorId)) {
+            return a_form->formID;
+        }
         return 0;
     }
 
