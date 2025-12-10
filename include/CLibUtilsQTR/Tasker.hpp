@@ -1,11 +1,10 @@
 // Author: Quantumyilmaz
 // Year: 2025
-
 #pragma once
 #include <functional>
 #include <mutex>
 #include <queue>
-#include "ClibUtil/singleton.hpp"
+#include <REX/REX/Singleton.h>
 
 namespace clib_utilsQTR {
     struct Task {
@@ -23,7 +22,7 @@ namespace clib_utilsQTR {
         }
     };
 
-    class Tasker final : public clib_util::singleton::ISingleton<Tasker> {
+    class Tasker final : public REX::Singleton<Tasker> {
     public:
         void Start(size_t num_threads = std::thread::hardware_concurrency()) {
             std::lock_guard lock(mutex_);
@@ -138,10 +137,10 @@ namespace clib_utilsQTR {
                     f();
                 } else {
                     //logger::info("Condition met, but duration not reached yet. Checking again in {} ms.", poll_interval_ms);
-                    Tasker::GetSingleton()->PushTask([checker] { (*checker)(); }, poll_interval_ms);
+                    GetSingleton()->PushTask([checker] { (*checker)(); }, poll_interval_ms);
                 }
             };
-            Tasker::GetSingleton()->PushTask([checker] { (*checker)(); }, 0);
+            GetSingleton()->PushTask([checker] { (*checker)(); }, 0);
         }
 
     private:
