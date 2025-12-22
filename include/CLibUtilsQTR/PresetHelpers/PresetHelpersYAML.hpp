@@ -1,5 +1,4 @@
 #pragma once
-#include <filesystem>
 #include <shared_mutex>
 #include "CLibUtilsQTR/StringHelpers.hpp"
 #include "CLibUtilsQTR/PresetHelpers/PresetHelpers.hpp"
