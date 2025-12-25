@@ -43,7 +43,7 @@ namespace BoundingBox {
 
     // ---- core: OBB from rigid body transform + SHAPE local AABB ----
     inline bool GetOBB(RE::bhkRigidBody* bhkBody, DirectX::BoundingOrientedBox& out,
-                                     bool applyHavokToSkyrimScale = true, float tolerance = 0.0f) {
+                       bool applyHavokToSkyrimScale = true, float tolerance = 0.0f) {
         if (!bhkBody) {
             return false;
         }
@@ -201,5 +201,107 @@ namespace BoundingBox {
         out.Extents = {halfLocal.x, halfLocal.y, halfLocal.z};
         out.Orientation = MatrixToDXQuaternion(R);
         return true;
+    }
+
+    inline float clampf(const float v, const float lo, const float hi) { return (v < lo) ? lo : (v > hi) ? hi : v; }
+
+    // Returns closest point on/in OBB. If inside, returns pWorld unchanged.
+    inline DirectX::XMVECTOR ClosestPointOnOBB(const DirectX::BoundingOrientedBox& obb,
+                                               DirectX::XMVECTOR pWorld) // xyz used, w ignored
+    {
+        using namespace DirectX;
+
+        const XMVECTOR C = XMLoadFloat3(&obb.Center);
+
+        const XMVECTOR q = XMLoadFloat4(&obb.Orientation);
+        const XMMATRIX R = XMMatrixRotationQuaternion(q);
+
+        // Unit axes (assumes quaternion normalized)
+        const XMVECTOR axisX = R.r[0];
+        const XMVECTOR axisY = R.r[1];
+        const XMVECTOR axisZ = R.r[2];
+
+        const XMVECTOR d = pWorld - C;
+
+        const float lx = XMVectorGetX(XMVector3Dot(d, axisX));
+        const float ly = XMVectorGetX(XMVector3Dot(d, axisY));
+        const float lz = XMVectorGetX(XMVector3Dot(d, axisZ));
+
+        const float ex = obb.Extents.x;
+        const float ey = obb.Extents.y;
+        const float ez = obb.Extents.z;
+
+        // Inside => return original point
+        if (std::fabs(lx) <= ex && std::fabs(ly) <= ey && std::fabs(lz) <= ez) {
+            return pWorld;
+        }
+
+        const float qx = clampf(lx, -ex, ex);
+        const float qy = clampf(ly, -ey, ey);
+        const float qz = clampf(lz, -ez, ez);
+
+        XMVECTOR Pclosest = C;
+        Pclosest = XMVectorMultiplyAdd(axisX, XMVectorReplicate(qx), Pclosest);
+        Pclosest = XMVectorMultiplyAdd(axisY, XMVectorReplicate(qy), Pclosest);
+        Pclosest = XMVectorMultiplyAdd(axisZ, XMVectorReplicate(qz), Pclosest);
+
+        return Pclosest;
+    }
+
+    inline DirectX::XMVECTOR ClosestPointOnOBBSurface(const DirectX::BoundingOrientedBox& obb,
+                                                      DirectX::XMVECTOR pWorld) {
+        using namespace DirectX;
+
+        const XMVECTOR C = XMLoadFloat3(&obb.Center);
+
+        const XMVECTOR q = XMLoadFloat4(&obb.Orientation);
+        const XMMATRIX R = XMMatrixRotationQuaternion(q);
+
+        const XMVECTOR axisX = R.r[0];
+        const XMVECTOR axisY = R.r[1];
+        const XMVECTOR axisZ = R.r[2];
+
+        const XMVECTOR d = pWorld - C;
+
+        const float lx = XMVectorGetX(XMVector3Dot(d, axisX));
+        const float ly = XMVectorGetX(XMVector3Dot(d, axisY));
+        const float lz = XMVectorGetX(XMVector3Dot(d, axisZ));
+
+        const float ex = obb.Extents.x;
+        const float ey = obb.Extents.y;
+        const float ez = obb.Extents.z;
+
+        float qx = clampf(lx, -ex, ex);
+        float qy = clampf(ly, -ey, ey);
+        float qz = clampf(lz, -ez, ez);
+
+        const bool inside = (std::fabs(lx) <= ex) && (std::fabs(ly) <= ey) && (std::fabs(lz) <= ez);
+
+        if (inside) {
+            const float mx = ex - std::fabs(lx);
+            const float my = ey - std::fabs(ly);
+            const float mz = ez - std::fabs(lz);
+
+            if (mx <= my && mx <= mz) {
+                qx = std::copysign(ex, (lx == 0.f) ? 1.f : lx);
+                qy = ly;
+                qz = lz;
+            } else if (my <= mz) {
+                qx = lx;
+                qy = std::copysign(ey, (ly == 0.f) ? 1.f : ly);
+                qz = lz;
+            } else {
+                qx = lx;
+                qy = ly;
+                qz = std::copysign(ez, (lz == 0.f) ? 1.f : lz);
+            }
+        }
+
+        XMVECTOR Pclosest = C;
+        Pclosest = XMVectorMultiplyAdd(axisX, XMVectorReplicate(qx), Pclosest);
+        Pclosest = XMVectorMultiplyAdd(axisY, XMVectorReplicate(qy), Pclosest);
+        Pclosest = XMVectorMultiplyAdd(axisZ, XMVectorReplicate(qz), Pclosest);
+
+        return Pclosest;
     }
 }
