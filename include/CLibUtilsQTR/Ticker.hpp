@@ -6,7 +6,7 @@ class Ticker {
     std::chrono::milliseconds m_Interval;
     std::chrono::milliseconds m_RemainingInterval;
 
-    std::atomic<bool> m_ThreadActive;
+    std::thread m_Thread;
     std::atomic<bool> m_Running;
     std::atomic<bool> m_Paused;
 
@@ -14,8 +14,6 @@ class Ticker {
     std::condition_variable m_Condition;
 
     void RunLoop() {
-        m_ThreadActive = true;
-
         std::unique_lock lock(m_Mutex);
 
         while (m_Running) {
@@ -27,6 +25,8 @@ class Ticker {
             auto start = std::chrono::steady_clock::now();
             m_Condition.wait_for(lock, m_RemainingInterval, [this] { return !m_Running || m_Paused; });
 
+            if (!m_Running) break;
+
             if (m_Paused) {
                 auto now = std::chrono::steady_clock::now();
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start);
@@ -35,49 +35,59 @@ class Ticker {
             }
 
             lock.unlock();
-            m_OnTick();
+            try {
+                m_OnTick();
+            } catch (...) {
+                Stop();
+            }
             lock.lock();
 
             m_RemainingInterval = m_Interval;
         }
-        m_ThreadActive = false;
     }
 
 public:
     void Stop() {
         {
             std::lock_guard lock(m_Mutex);
-            if (!m_Running) {
-                return;
-            }
+            if (!m_Running) return;
             m_Running = false;
             m_Paused = false;
         }
         m_Condition.notify_all();
     }
 
-    virtual ~Ticker() {
-        Stop(); // Ensure we stop if destructed
+    void Join() {
+        if (m_Thread.joinable() && std::this_thread::get_id() != m_Thread.get_id()) {
+            m_Thread.join();
+        }
+    }
+
+    ~Ticker() {
+        Stop();
+        if (m_Thread.joinable() && std::this_thread::get_id() == m_Thread.get_id()) {
+            m_Thread.detach();
+        } else {
+            Join();
+        }
     }
 
     Ticker(const std::function<void()>& onTick, const std::chrono::milliseconds interval)
-        : m_OnTick(onTick), m_Interval(interval), m_ThreadActive(false), m_Running(false) {
-    }
+        : m_OnTick(onTick), m_Interval(interval), m_RemainingInterval(interval), m_Running(false), m_Paused(false) {}
 
     void Start() {
-        {
-            std::lock_guard lock(m_Mutex);
-            if (m_Running) {
-                return;
-            }
-            m_Running = true;
-            m_Paused = false;
-            m_RemainingInterval = m_Interval;
+        if (m_Thread.joinable()) {
+            if (std::this_thread::get_id() == m_Thread.get_id()) return;
+            m_Thread.join();
         }
-        std::thread tickerThread(&Ticker::RunLoop, this);
-        tickerThread.detach();
-    }
 
+        std::lock_guard lock(m_Mutex);
+        if (m_Running) return;
+        m_Running = true;
+        m_Paused = false;
+        m_RemainingInterval = m_Interval;
+        m_Thread = std::thread(&Ticker::RunLoop, this);
+    }
 
     void Pause() {
         {
