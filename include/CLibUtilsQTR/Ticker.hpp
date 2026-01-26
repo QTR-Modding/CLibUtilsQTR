@@ -47,6 +47,12 @@ class Ticker {
     }
 
 public:
+
+    Ticker(const Ticker&) = delete;
+    Ticker& operator=(const Ticker&) = delete;
+    Ticker(Ticker&&) = delete;
+    Ticker& operator=(Ticker&&) = delete;
+
     void Stop() {
         {
             std::lock_guard lock(m_Mutex);
@@ -58,36 +64,73 @@ public:
     }
 
     void Join() {
-        if (m_Thread.joinable() && std::this_thread::get_id() != m_Thread.get_id()) {
-            m_Thread.join();
+        std::thread t;
+        {
+            std::lock_guard<std::mutex> lk(m_Mutex);
+            if (!m_Thread.joinable()) return;
+            if (std::this_thread::get_id() == m_Thread.get_id()) {
+                std::terminate();  // forbid self-join
+            }
+            t = std::move(m_Thread);
         }
+        t.join();
     }
+
 
     ~Ticker() {
         Stop();
         if (m_Thread.joinable() && std::this_thread::get_id() == m_Thread.get_id()) {
-            m_Thread.detach();
-        } else {
-            Join();
+            std::terminate();
         }
+
+        Join();
     }
+
 
     Ticker(const std::function<void()>& onTick, const std::chrono::milliseconds interval)
-        : m_OnTick(onTick), m_Interval(interval), m_RemainingInterval(interval), m_Running(false), m_Paused(false) {}
+        : m_OnTick(onTick), m_Interval(interval), m_RemainingInterval(interval), m_Running(false), m_Paused(false) {
+    }
 
     void Start() {
-        if (m_Thread.joinable()) {
-            if (std::this_thread::get_id() == m_Thread.get_id()) return;
-            m_Thread.join();
+        if (m_Thread.joinable() && std::this_thread::get_id() == m_Thread.get_id()) {
+            std::terminate();
         }
 
-        std::lock_guard lock(m_Mutex);
-        if (m_Running) return;
-        m_Running = true;
-        m_Paused = false;
-        m_RemainingInterval = m_Interval;
-        m_Thread = std::thread(&Ticker::RunLoop, this);
+        std::thread old;
+        {
+            std::lock_guard lk(m_Mutex);
+            if (m_Running) return;
+            old = std::move(m_Thread);
+        }
+        if (old.joinable()) old.join();
+
+        {
+            std::lock_guard lk(m_Mutex);
+            if (m_Running) return;
+            m_Paused = false;
+            m_RemainingInterval = m_Interval;
+            m_Running = true;
+        }
+
+        std::thread t;
+        try {
+            t = std::thread(&Ticker::RunLoop, this);
+        } catch (...) {
+            {
+                std::lock_guard lk(m_Mutex);
+                m_Running = false;
+                m_Paused = false;
+            }
+            m_Condition.notify_all();
+            throw;
+        }
+
+        {
+            std::lock_guard lk(m_Mutex);
+            m_Thread = std::move(t);
+        }
     }
+
 
     void Pause() {
         {
