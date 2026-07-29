@@ -41,6 +41,17 @@ namespace BoundingBox {
                 c0[2] * v.x + c1[2] * v.y + c2[2] * v.z};
     }
 
+    inline RE::bhkRigidBody* GetRigidBody(const RE::TESObjectREFR* refr) {
+        const auto object3D = refr->GetCurrent3D();
+        if (!object3D) {
+            return nullptr;
+        }
+        if (const auto body = object3D->GetCollisionObject()) {
+            return body->GetRigidBody();
+        }
+        return nullptr;
+    }
+
     // ---- core: OBB from rigid body transform + SHAPE local AABB ----
     inline bool GetOBB(RE::bhkRigidBody* bhkBody, DirectX::BoundingOrientedBox& out,
                        bool applyHavokToSkyrimScale = true, float tolerance = 0.0f) {
@@ -49,13 +60,13 @@ namespace BoundingBox {
         }
 
         // hkpRigidBody*
-        auto* rb = bhkBody->GetRigidBody();
+        auto rb = bhkBody->GetRigidBody();
         if (!rb) {
             return false;
         }
 
         // hkpShape*
-        auto* shape = rb->GetShape();
+        auto shape = rb->GetShape();
         if (!shape) {
             return false;
         }
@@ -144,62 +155,77 @@ namespace BoundingBox {
             qw *= invLen;
         }
 
-        return DirectX::XMFLOAT4(qx, qy, qz, qw); // DirectX = (x,y,z,w)
+        return DirectX::XMFLOAT4(qx, qy, qz, qw);  // DirectX = (x,y,z,w)
     }
 
-    inline bool GetOBB(const RE::TESObjectREFR* obj, DirectX::BoundingOrientedBox& out) {
-        if (!obj) return false;
+    // ---- helper: build OBB from Havok world AABB (fast path) ----
+    inline bool GetOBBFromHavok(const RE::TESObjectREFR* obj, DirectX::BoundingOrientedBox& out) {
+        if (const auto body = GetRigidBody(obj)) {
+            RE::hkAabb aabb;
+            body->GetAabbWorldspace(aabb);
 
-        // Local bounds (gameplay/model bounds)
-        RE::NiPoint3 minLocal = obj->GetBoundMin();
-        RE::NiPoint3 maxLocal = obj->GetBoundMax();
+            float minComp[4]{};
+            float maxComp[4]{};
+            _mm_store_ps(minComp, aabb.min.quad);
+            _mm_store_ps(maxComp, aabb.max.quad);
 
-        // If bounds are degenerate, you can optionally fallback to worldBound radius if you want
-        // (some refs report zero bounds depending on type/load state)
-        const RE::NiPoint3 size = maxLocal - minLocal;
-        if (std::abs(size.x) < 1e-5f && std::abs(size.y) < 1e-5f && std::abs(size.z) < 1e-5f) {
-            if (const auto node = obj->GetCurrent3D()) {
-                const auto& wb = node->worldBound; // NiBound
-                const float r = wb.radius;
-                if (r > 0.f) {
-                    out.Center = {wb.center.x, wb.center.y, wb.center.z};
-                    out.Extents = {r, r, r};
-                    out.Orientation = {0.f, 0.f, 0.f, 1.f};
-                    return true;
-                }
-            }
-            // last resort: still return something minimal
-            const auto p = obj->GetPosition();
-            out.Center = {p.x, p.y, p.z};
-            out.Extents = {1.f, 1.f, 1.f};
-            out.Orientation = {0.f, 0.f, 0.f, 1.f};
+            // Same factor you used before
+            constexpr float havokToSkyrim = 69.9915f;
+
+            const RE::NiPoint3 minWorld{minComp[0] * havokToSkyrim, minComp[1] * havokToSkyrim,
+                                        minComp[2] * havokToSkyrim};
+            const RE::NiPoint3 maxWorld{maxComp[0] * havokToSkyrim, maxComp[1] * havokToSkyrim,
+                                        maxComp[2] * havokToSkyrim};
+
+            const RE::NiPoint3 center = (minWorld + maxWorld) * 0.5f;
+            const RE::NiPoint3 half = (maxWorld - minWorld) * 0.5f;
+
+            out.Center = DirectX::XMFLOAT3(center.x, center.y, center.z);
+            out.Extents = DirectX::XMFLOAT3(half.x, half.y, half.z);
+            // Havok gave us a world AABB, so orientation is identity
+            out.Orientation = DirectX::XMFLOAT4(0.f, 0.f, 0.f, 1.f);
+
+            return true;
+        }
+        return false;
+    }
+
+    inline bool GetOBB(const RE::TESObjectREFR* obj, DirectX::BoundingOrientedBox& out, const bool allowAABB = false) {
+        if (allowAABB && GetOBBFromHavok(obj, out)) {
             return true;
         }
 
-        // Apply scale (gameplay bounds are local model bounds)
-        const float s = obj->GetScale();
-        minLocal *= s;
-        maxLocal *= s;
+        RE::NiPoint3 minLocal = obj->GetBoundMin();
+        RE::NiPoint3 maxLocal = obj->GetBoundMax();
 
-        // World transform
-        RE::NiMatrix3 R;
-        RE::NiPoint3 T;
+        const RE::NiPoint3 size = maxLocal - minLocal;
+        if (std::abs(size.x) < 1e-5f && std::abs(size.y) < 1e-5f && std::abs(size.z) < 1e-5f) {
+            return false;
+        }
+
+        const float scale = obj->GetScale();
+        minLocal *= scale;
+        maxLocal *= scale;
+
+        RE::NiMatrix3 rotation;
+        RE::NiPoint3 translation;
 
         if (const auto node = obj->GetCurrent3D()) {
-            R = node->world.rotate;
-            T = node->world.translate;
+            rotation = node->world.rotate;
+            translation = node->world.translate;
         } else {
-            R.SetEulerAnglesXYZ(obj->GetAngle());
-            T = obj->GetPosition();
+            rotation.SetEulerAnglesXYZ(obj->GetAngle());
+            translation = obj->GetPosition();
         }
 
         const RE::NiPoint3 localCenter = (minLocal + maxLocal) * 0.5f;
-        const RE::NiPoint3 halfLocal = (maxLocal - minLocal) * 0.5f;
-        const RE::NiPoint3 worldCenter = T + R * localCenter;
+        const RE::NiPoint3 halfExtents = (maxLocal - minLocal) * 0.5f;
+        const RE::NiPoint3 worldCenter = translation + rotation * localCenter;
 
         out.Center = {worldCenter.x, worldCenter.y, worldCenter.z};
-        out.Extents = {halfLocal.x, halfLocal.y, halfLocal.z};
-        out.Orientation = MatrixToDXQuaternion(R);
+        out.Extents = {halfExtents.x, halfExtents.y, halfExtents.z};
+        out.Orientation = MatrixToDXQuaternion(rotation);
+
         return true;
     }
 
@@ -207,7 +233,7 @@ namespace BoundingBox {
 
     // Returns closest point on/in OBB. If inside, returns pWorld unchanged.
     inline DirectX::XMVECTOR ClosestPointOnOBB(const DirectX::BoundingOrientedBox& obb,
-                                               DirectX::XMVECTOR pWorld) // xyz used, w ignored
+                                               DirectX::XMVECTOR pWorld)  // xyz used, w ignored
     {
         using namespace DirectX;
 
