@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <queue>
 #include <shared_mutex>
 #include "CLibUtilsQTR/Ticker.hpp"
@@ -8,11 +9,26 @@ struct Animation {
     std::string anim_name;
     unsigned int t_wait_ms = 0;
     uint32_t anim_id = 0;
+    std::function<bool(RE::Actor*, const Animation&)> before_play{};
 };
 
 class Animator :
     public Ticker,
     public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
+    static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation) {
+        if (!a_actor) {
+            return false;
+        }
+        if (!a_animation.before_play) {
+            return true;
+        }
+        try {
+            return a_animation.before_play(a_actor, a_animation);
+        } catch (...) {
+            return false;
+        }
+    }
+
     static bool SendAnimationEvent(RE::Actor* a_actor, const char* AnimationString) {
         if (const auto animGraphHolder = static_cast<RE::IAnimationGraphManagerHolder*>(a_actor)) {
             if (animGraphHolder->NotifyAnimationGraph(AnimationString)) {
@@ -49,12 +65,13 @@ class Animator :
             return;
         }
 
-        auto [a_idle, a_anim, t_wait_ms, anim_id] = m_AnimQueue.front();
+        auto animation = m_AnimQueue.front();
         m_AnimQueue.pop();
-        UpdateInterval(std::chrono::milliseconds(t_wait_ms));
-        if (a_idle) {
-            SKSE::GetTaskInterface()->AddTask([this, a_idle]() {
-                if (PlayIdle(a_idle)) {
+        UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
+        if (animation.a_idle) {
+            SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
+                const auto a_actor = actor.get();
+                if (RunBeforePlay(a_actor, animation) && PlayIdle(animation.a_idle)) {
                     Start();
                 } else {
                     Stop();
@@ -62,9 +79,10 @@ class Animator :
                     Start();
                 }
             });
-        } else if (!a_anim.empty()) {
-            SKSE::GetTaskInterface()->AddTask([this,a_anim]() {
-                if (PlayAnimation(a_anim.c_str())) {
+        } else if (!animation.anim_name.empty()) {
+            SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
+                const auto a_actor = actor.get();
+                if (RunBeforePlay(a_actor, animation) && PlayAnimation(animation.anim_name.c_str())) {
                     Start();
                 } else {
                     Stop();
