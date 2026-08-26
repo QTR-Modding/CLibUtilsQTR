@@ -15,6 +15,20 @@ struct Animation {
 class Animator :
     public Ticker,
     public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
+    static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation) {
+        if (!a_actor) {
+            return false;
+        }
+        if (!a_animation.before_play) {
+            return true;
+        }
+        try {
+            return a_animation.before_play(a_actor, a_animation);
+        } catch (...) {
+            return false;
+        }
+    }
+
     static bool SendAnimationEvent(RE::Actor* a_actor, const char* AnimationString) {
         if (const auto animGraphHolder = static_cast<RE::IAnimationGraphManagerHolder*>(a_actor)) {
             if (animGraphHolder->NotifyAnimationGraph(AnimationString)) {
@@ -57,8 +71,7 @@ class Animator :
         if (animation.a_idle) {
             SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
                 const auto a_actor = actor.get();
-                if (a_actor && (!animation.before_play || animation.before_play(a_actor, animation)) &&
-                    PlayIdle(animation.a_idle)) {
+                if (RunBeforePlay(a_actor, animation) && PlayIdle(animation.a_idle)) {
                     Start();
                 } else {
                     Stop();
@@ -69,8 +82,7 @@ class Animator :
         } else if (!animation.anim_name.empty()) {
             SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
                 const auto a_actor = actor.get();
-                if (a_actor && (!animation.before_play || animation.before_play(a_actor, animation)) &&
-                    PlayAnimation(animation.anim_name.c_str())) {
+                if (RunBeforePlay(a_actor, animation) && PlayAnimation(animation.anim_name.c_str())) {
                     Start();
                 } else {
                     Stop();
