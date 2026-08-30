@@ -96,9 +96,9 @@ namespace Presets {
 
             template <typename T>
             bool Get(const rapidjson::Value& obj, const std::string& key, T& out) {
-                if (!obj.IsObject() || !obj.HasMember(key.c_str())) return false;
-                const auto& val = obj[key.c_str()];
-                return Get(val, out);
+                if (!obj.IsObject()) return false;
+                const auto it = obj.FindMember(key.c_str());
+                return it != obj.MemberEnd() && Get(it->value, out);
             }
         }
 
