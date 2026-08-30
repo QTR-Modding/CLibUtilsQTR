@@ -1,12 +1,11 @@
 #pragma once
+#include <charconv>
 #include <ranges>
 #include <string>
 #include <vector>
 #include <regex>
 #include <algorithm>
 #include <cctype>
-#include <ios>
-#include <sstream>
 #include "ClibUtil/editorID.hpp"
 
 namespace FormReader {
@@ -120,10 +119,17 @@ namespace FormReader {
     }
 
     inline FormID GetFormIDFromString(const std::string& input) {
+        constexpr std::string_view hex_prefix = "0x";
+        constexpr auto hex_base = 16;
+        auto value = std::string_view(input);
+        if (value.starts_with(hex_prefix) || value.starts_with("0X")) {
+            value.remove_prefix(hex_prefix.size());
+        }
+
         FormID form_id{};
-        std::stringstream stream(input);
-        stream >> std::hex >> form_id;
-        return stream && stream.eof() ? form_id : FormID{};
+        const auto last = value.data() + value.size();
+        const auto [end, error] = std::from_chars(value.data(), last, form_id, hex_base);
+        return error == std::errc{} && end == last ? form_id : FormID{};
     }
 
     inline bool isValidHexWithLength7or8(const char* input) {
