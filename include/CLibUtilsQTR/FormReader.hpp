@@ -1,12 +1,11 @@
 #pragma once
+#include <charconv>
 #include <ranges>
 #include <string>
 #include <vector>
 #include <regex>
 #include <algorithm>
 #include <cctype>
-#include <ios>
-#include <sstream>
 #include "ClibUtil/editorID.hpp"
 
 namespace FormReader {
@@ -120,11 +119,17 @@ namespace FormReader {
     }
 
     inline FormID GetFormIDFromString(const std::string& input) {
-        FormID form_id_;
-        std::stringstream ss;
-        ss << std::hex << input;
-        ss >> form_id_;
-        return form_id_;
+        constexpr std::string_view hex_prefix = "0x";
+        constexpr auto hex_base = 16;
+        auto value = std::string_view(input);
+        if (value.starts_with(hex_prefix) || value.starts_with("0X")) {
+            value.remove_prefix(hex_prefix.size());
+        }
+
+        FormID form_id{};
+        const auto last = value.data() + value.size();
+        const auto [end, error] = std::from_chars(value.data(), last, form_id, hex_base);
+        return error == std::errc{} && end == last ? form_id : FormID{};
     }
 
     inline bool isValidHexWithLength7or8(const char* input) {
@@ -168,9 +173,10 @@ namespace FormReader {
         const auto plugin_and_localid = split(formEditorId, delimiter);
         if (plugin_and_localid.size() == 2) {
             const auto& plugin_name = plugin_and_localid[1];
-            const auto local_id = FormReader::GetFormIDFromString(plugin_and_localid[0]);
-            const auto formid = FormReader::GetForm(plugin_name.c_str(), local_id);
-            if (const auto form = RE::TESForm::LookupByID(formid)) return form;
+            if (const auto local_id = FormReader::GetFormIDFromString(plugin_and_localid[0]); local_id) {
+                const auto formid = FormReader::GetForm(plugin_name.c_str(), local_id);
+                if (const auto form = RE::TESForm::LookupByID(formid)) return form;
+            }
         }
 
         if (isValidHexWithLength7or8(formEditorId.c_str())) {
