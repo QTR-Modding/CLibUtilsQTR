@@ -120,11 +120,10 @@ namespace FormReader {
     }
 
     inline FormID GetFormIDFromString(const std::string& input) {
-        FormID form_id_;
-        std::stringstream ss;
-        ss << std::hex << input;
-        ss >> form_id_;
-        return form_id_;
+        FormID form_id{};
+        std::stringstream stream(input);
+        stream >> std::hex >> form_id;
+        return stream && stream.eof() ? form_id : FormID{};
     }
 
     inline bool isValidHexWithLength7or8(const char* input) {
@@ -168,9 +167,10 @@ namespace FormReader {
         const auto plugin_and_localid = split(formEditorId, delimiter);
         if (plugin_and_localid.size() == 2) {
             const auto& plugin_name = plugin_and_localid[1];
-            const auto local_id = FormReader::GetFormIDFromString(plugin_and_localid[0]);
-            const auto formid = FormReader::GetForm(plugin_name.c_str(), local_id);
-            if (const auto form = RE::TESForm::LookupByID(formid)) return form;
+            if (const auto local_id = FormReader::GetFormIDFromString(plugin_and_localid[0]); local_id) {
+                const auto formid = FormReader::GetForm(plugin_name.c_str(), local_id);
+                if (const auto form = RE::TESForm::LookupByID(formid)) return form;
+            }
         }
 
         if (isValidHexWithLength7or8(formEditorId.c_str())) {
