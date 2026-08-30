@@ -15,19 +15,31 @@ struct Animation {
 class Animator :
     public Ticker,
     public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
-    bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation) {
+    enum class DispatchState { kReady, kPending, kCleared };
+
+    static constexpr auto failure_interval = std::chrono::milliseconds(10);
+    std::atomic<DispatchState> dispatch_state{DispatchState::kReady};
+
+    static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation) {
         if (!a_actor) {
             return false;
         }
-        try {
-            if (a_animation.before_play && !a_animation.before_play(a_actor, a_animation)) {
-                return false;
-            }
-            UpdateInterval(std::chrono::milliseconds(a_animation.t_wait_ms));
+        if (!a_animation.before_play) {
             return true;
+        }
+        try {
+            return a_animation.before_play(a_actor, a_animation);
         } catch (...) {
             return false;
         }
+    }
+
+    void FinishDispatch(const bool a_success, const unsigned int a_wait_ms) {
+        std::unique_lock lock(animQ_mutex);
+        if (dispatch_state.load() == DispatchState::kPending) {
+            UpdateInterval(a_success ? std::chrono::milliseconds(a_wait_ms) : failure_interval);
+        }
+        dispatch_state = DispatchState::kReady;
     }
 
     static bool SendAnimationEvent(RE::Actor* a_actor, const char* AnimationString) {
@@ -69,26 +81,20 @@ class Animator :
         auto animation = m_AnimQueue.front();
         m_AnimQueue.pop();
         if (animation.a_idle) {
+            dispatch_state = DispatchState::kPending;
             SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
                 const auto a_actor = actor.get();
-                if (RunBeforePlay(a_actor, animation) && PlayIdle(animation.a_idle)) {
-                    Start();
-                } else {
-                    Stop();
-                    UpdateInterval(std::chrono::milliseconds(10));
-                    Start();
-                }
+                const auto success = RunBeforePlay(a_actor, animation) && PlayIdle(animation.a_idle);
+                FinishDispatch(success, animation.t_wait_ms);
+                Start();
             });
         } else if (!animation.anim_name.empty()) {
+            dispatch_state = DispatchState::kPending;
             SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
                 const auto a_actor = actor.get();
-                if (RunBeforePlay(a_actor, animation) && PlayAnimation(animation.anim_name.c_str())) {
-                    Start();
-                } else {
-                    Stop();
-                    UpdateInterval(std::chrono::milliseconds(10));
-                    Start();
-                }
+                const auto success = RunBeforePlay(a_actor, animation) && PlayAnimation(animation.anim_name.c_str());
+                FinishDispatch(success, animation.t_wait_ms);
+                Start();
             });
         } else {
             UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
@@ -110,9 +116,12 @@ public:
                                                   RE::BSTEventSource<RE::BSAnimationGraphEvent>*) =0;
 
     void ClearQueue() {
+        std::unique_lock lock(animQ_mutex);
+        if (dispatch_state.load() == DispatchState::kPending) {
+            dispatch_state = DispatchState::kCleared;
+        }
         Stop();
         UpdateInterval(std::chrono::milliseconds(0));
-        std::unique_lock lock(animQ_mutex);
         m_AnimQueue = std::queue<Animation>();
     }
 
@@ -127,5 +136,11 @@ public:
         }
 
         Start();
+    }
+
+    void Start() {
+        if (dispatch_state.load() == DispatchState::kReady) {
+            Ticker::Start();
+        }
     }
 };
