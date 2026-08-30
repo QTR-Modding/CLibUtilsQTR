@@ -7,28 +7,24 @@
 struct Animation {
     RE::TESIdleForm* a_idle = nullptr;
     std::string anim_name;
-    unsigned int t_wait_ms = 0;
+    mutable unsigned int t_wait_ms = 0;
     uint32_t anim_id = 0;
-    std::function<bool(RE::Actor*, Animation&)> before_play{};
+    std::function<bool(RE::Actor*, const Animation&)> before_play{};
 };
 
 class Animator :
     public Ticker,
     public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
-    std::atomic_bool play_pending{false};
-
-    void ContinueQueue() {
-        play_pending = false;
-        Start();
-    }
-
-    static bool RunBeforePlay(RE::Actor* a_actor, Animation& a_animation) {
+    bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation) {
         if (!a_actor) {
             return false;
         }
         try {
-            const auto before_play = a_animation.before_play;
-            return !before_play || before_play(a_actor, a_animation);
+            if (a_animation.before_play && !a_animation.before_play(a_actor, a_animation)) {
+                return false;
+            }
+            UpdateInterval(std::chrono::milliseconds(a_animation.t_wait_ms));
+            return true;
         } catch (...) {
             return false;
         }
@@ -64,35 +60,39 @@ class Animator :
     void UpdateLoop() {
         std::unique_lock lock(animQ_mutex);
 
+        Stop();
         if (m_AnimQueue.empty()) {
-            Stop();
             UpdateInterval(std::chrono::milliseconds(0));
             return;
         }
 
         auto animation = m_AnimQueue.front();
         m_AnimQueue.pop();
-        if (animation.before_play || animation.a_idle || !animation.anim_name.empty()) {
-            play_pending = true;
-            Stop();
-            SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() mutable {
+        if (animation.a_idle) {
+            SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
                 const auto a_actor = actor.get();
-                auto success = RunBeforePlay(a_actor, animation);
-                if (success) {
-                    UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
-                    if (animation.a_idle) {
-                        success = PlayIdle(animation.a_idle);
-                    } else if (!animation.anim_name.empty()) {
-                        success = PlayAnimation(animation.anim_name.c_str());
-                    }
-                }
-                if (!success) {
+                if (RunBeforePlay(a_actor, animation) && PlayIdle(animation.a_idle)) {
+                    Start();
+                } else {
+                    Stop();
                     UpdateInterval(std::chrono::milliseconds(10));
+                    Start();
                 }
-                ContinueQueue();
+            });
+        } else if (!animation.anim_name.empty()) {
+            SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
+                const auto a_actor = actor.get();
+                if (RunBeforePlay(a_actor, animation) && PlayAnimation(animation.anim_name.c_str())) {
+                    Start();
+                } else {
+                    Stop();
+                    UpdateInterval(std::chrono::milliseconds(10));
+                    Start();
+                }
             });
         } else {
             UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
+            Start();
         }
     }
 
@@ -102,10 +102,6 @@ protected:
     std::queue<Animation> m_AnimQueue;
 
 public:
-    void Start() {
-        if (!play_pending) Ticker::Start();
-    }
-
     explicit Animator(RE::ActorHandlePtr a_actor) : Ticker([this]() { UpdateLoop(); }, std::chrono::milliseconds(0)),
                                                     actor(std::move(a_actor)) {
     }
