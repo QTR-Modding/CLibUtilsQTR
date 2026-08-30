@@ -22,14 +22,13 @@ class Animator :
         Start();
     }
 
-    bool RunBeforePlay(RE::Actor* a_actor, Animation& a_animation) {
+    static bool RunBeforePlay(RE::Actor* a_actor, Animation& a_animation) {
         if (!a_actor) {
             return false;
         }
         try {
-            if (a_animation.before_play && !a_animation.before_play(a_actor, a_animation)) return false;
-            UpdateInterval(std::chrono::milliseconds(a_animation.t_wait_ms));
-            return true;
+            const auto before_play = a_animation.before_play;
+            return !before_play || before_play(a_actor, a_animation);
         } catch (...) {
             return false;
         }
@@ -73,29 +72,24 @@ class Animator :
 
         auto animation = m_AnimQueue.front();
         m_AnimQueue.pop();
-        if (animation.a_idle || !animation.anim_name.empty()) {
+        if (animation.before_play || animation.a_idle || !animation.anim_name.empty()) {
             play_pending = true;
             Stop();
-        }
-        if (animation.a_idle) {
             SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() mutable {
                 const auto a_actor = actor.get();
-                if (RunBeforePlay(a_actor, animation) && PlayIdle(animation.a_idle)) {
-                    ContinueQueue();
-                } else {
-                    UpdateInterval(std::chrono::milliseconds(10));
-                    ContinueQueue();
+                auto success = RunBeforePlay(a_actor, animation);
+                if (success) {
+                    UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
+                    if (animation.a_idle) {
+                        success = PlayIdle(animation.a_idle);
+                    } else if (!animation.anim_name.empty()) {
+                        success = PlayAnimation(animation.anim_name.c_str());
+                    }
                 }
-            });
-        } else if (!animation.anim_name.empty()) {
-            SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() mutable {
-                const auto a_actor = actor.get();
-                if (RunBeforePlay(a_actor, animation) && PlayAnimation(animation.anim_name.c_str())) {
-                    ContinueQueue();
-                } else {
+                if (!success) {
                     UpdateInterval(std::chrono::milliseconds(10));
-                    ContinueQueue();
                 }
+                ContinueQueue();
             });
         } else {
             UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
