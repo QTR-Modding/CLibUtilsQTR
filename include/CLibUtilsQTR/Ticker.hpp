@@ -2,13 +2,20 @@
 #include <functional>
 
 class Ticker {
+    enum class State {
+        kStopped,
+        kRunning,
+        kPaused,
+        kTerminating
+    };
+
     std::function<void()> m_OnTick;
     std::chrono::milliseconds m_Interval;
     std::chrono::milliseconds m_RemainingInterval;
 
     std::thread m_Thread;
-    std::atomic<bool> m_Running;
-    std::atomic<bool> m_Paused;
+    std::atomic<State> m_State{State::kStopped};
+    std::optional<std::chrono::steady_clock::time_point> m_Deadline;
 
     std::mutex m_Mutex;
     std::condition_variable m_Condition;
@@ -16,24 +23,21 @@ class Ticker {
     void RunLoop() {
         std::unique_lock lock(m_Mutex);
 
-        while (m_Running) {
-            if (m_Paused) {
-                m_Condition.wait(lock, [this] { return !m_Paused || !m_Running; });
+        while (m_State != State::kTerminating) {
+            m_Condition.wait(lock, [this] {
+                return m_State == State::kTerminating || m_State == State::kRunning;
+            });
+            if (m_State == State::kTerminating) break;
+
+            m_Deadline = std::chrono::steady_clock::now() + m_RemainingInterval;
+            const auto deadline = *m_Deadline;
+            if (m_Condition.wait_until(lock, deadline, [this] {
+                    return m_State == State::kTerminating || !m_Deadline;
+                })) {
                 continue;
             }
 
-            auto start = std::chrono::steady_clock::now();
-            m_Condition.wait_for(lock, m_RemainingInterval, [this] { return !m_Running || m_Paused; });
-
-            if (!m_Running) break;
-
-            if (m_Paused) {
-                auto now = std::chrono::steady_clock::now();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start);
-                m_RemainingInterval = std::max(m_RemainingInterval - elapsed, std::chrono::milliseconds(0));
-                continue;
-            }
-
+            m_Deadline.reset();
             lock.unlock();
             try {
                 m_OnTick();
@@ -41,7 +45,6 @@ class Ticker {
                 Stop();
             }
             lock.lock();
-
             m_RemainingInterval = m_Interval;
         }
     }
@@ -56,9 +59,9 @@ public:
     void Stop() {
         {
             std::lock_guard lock(m_Mutex);
-            if (!m_Running) return;
-            m_Running = false;
-            m_Paused = false;
+            if (m_State == State::kStopped || m_State == State::kTerminating) return;
+            m_State = State::kStopped;
+            m_Deadline.reset();
         }
         m_Condition.notify_all();
     }
@@ -66,79 +69,65 @@ public:
     void Join() {
         std::thread t;
         {
-            std::lock_guard<std::mutex> lk(m_Mutex);
+            std::lock_guard lk(m_Mutex);
             if (!m_Thread.joinable()) return;
             if (std::this_thread::get_id() == m_Thread.get_id()) {
                 std::terminate();  // forbid self-join
             }
+            m_State = State::kTerminating;
+            m_Deadline.reset();
             t = std::move(m_Thread);
         }
+        m_Condition.notify_all();
         t.join();
+
+        {
+            std::lock_guard lk(m_Mutex);
+            m_State = State::kStopped;
+        }
     }
 
 
     ~Ticker() {
-        Stop();
-        if (m_Thread.joinable() && std::this_thread::get_id() == m_Thread.get_id()) {
-            std::terminate();
-        }
-
         Join();
     }
 
 
     Ticker(const std::function<void()>& onTick, const std::chrono::milliseconds interval)
-        : m_OnTick(onTick), m_Interval(interval), m_RemainingInterval(interval), m_Running(false), m_Paused(false) {
+        : m_OnTick(onTick), m_Interval(interval), m_RemainingInterval(interval) {
     }
 
     void Start() {
-        if (m_Thread.joinable() && std::this_thread::get_id() == m_Thread.get_id()) {
-            std::terminate();
-        }
-
-        std::thread old;
         {
-            std::lock_guard lk(m_Mutex);
-            if (m_Running) return;
-            old = std::move(m_Thread);
-        }
-        if (old.joinable()) old.join();
+            std::lock_guard lock(m_Mutex);
+            if (m_State != State::kStopped) return;
 
-        {
-            std::lock_guard lk(m_Mutex);
-            if (m_Running) return;
-            m_Paused = false;
-            m_RemainingInterval = m_Interval;
-            m_Running = true;
-        }
-
-        std::thread t;
-        try {
-            t = std::thread(&Ticker::RunLoop, this);
-        } catch (...) {
-            {
-                std::lock_guard lk(m_Mutex);
-                m_Running = false;
-                m_Paused = false;
+            if (!m_Thread.joinable()) {
+                m_Thread = std::thread(&Ticker::RunLoop, this);
             }
-            m_Condition.notify_all();
-            throw;
+
+            m_RemainingInterval = m_Interval;
+            m_State = State::kRunning;
         }
 
-        {
-            std::lock_guard lk(m_Mutex);
-            m_Thread = std::move(t);
-        }
+        m_Condition.notify_all();
     }
 
 
     void Pause() {
         {
             std::lock_guard lock(m_Mutex);
-            if (!m_Running || m_Paused) {
+            if (m_State != State::kRunning) {
                 return;
             }
-            m_Paused = true;
+            if (m_Deadline) {
+                m_RemainingInterval = std::max(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(*m_Deadline -
+                                                                          std::chrono::steady_clock::now()),
+                    std::chrono::milliseconds(0));
+                m_Deadline.reset();
+            }
+            m_State = State::kPaused;
         }
         m_Condition.notify_all();
     }
@@ -146,10 +135,10 @@ public:
     void Resume() {
         {
             std::lock_guard lock(m_Mutex);
-            if (!m_Running || !m_Paused) {
+            if (m_State != State::kPaused) {
                 return;
             }
-            m_Paused = false;
+            m_State = State::kRunning;
         }
         m_Condition.notify_all();
     }
@@ -157,11 +146,14 @@ public:
     void UpdateInterval(std::chrono::milliseconds newInterval) {
         std::lock_guard lock(m_Mutex);
         m_Interval = newInterval;
-        if (!m_Paused) {
+        if (m_State != State::kPaused) {
             m_RemainingInterval = newInterval;
         }
         // m_Condition.notify_all();
     }
 
-    bool isRunning() const { return m_Running; }
+    bool isRunning() const {
+        const auto state = m_State.load();
+        return state == State::kRunning || state == State::kPaused;
+    }
 };
