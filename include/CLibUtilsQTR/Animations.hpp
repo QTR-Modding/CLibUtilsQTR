@@ -17,6 +17,7 @@ class Animator :
     public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
     static constexpr auto failure_interval = std::chrono::milliseconds(10);
     bool dispatch_pending{false};
+    bool pause_requested{false};
 
     static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation) {
         if (!a_actor) {
@@ -76,7 +77,7 @@ class Animator :
         m_AnimQueue.pop();
         UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
         if (!animation.a_idle && animation.anim_name.empty()) {
-            Start();
+            StartIfReady();
             return;
         }
 
@@ -90,12 +91,18 @@ class Animator :
             {
                 std::unique_lock lock(animQ_mutex);
                 dispatch_pending = false;
+                StartIfReady();
             }
-            Start();
         });
     }
 
 protected:
+    void StartIfReady() {
+        if (!dispatch_pending && !pause_requested) {
+            Ticker::Start();
+        }
+    }
+
     RE::ActorHandlePtr actor;
     std::shared_mutex animQ_mutex;
     std::queue<Animation> m_AnimQueue;
@@ -107,6 +114,21 @@ public:
 
     virtual RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent* a_event,
                                                   RE::BSTEventSource<RE::BSAnimationGraphEvent>*) =0;
+
+    void Pause() {
+        std::unique_lock lock(animQ_mutex);
+        pause_requested = true;
+        Ticker::Pause();
+    }
+
+    void Resume() {
+        std::unique_lock lock(animQ_mutex);
+        Ticker::Resume();
+        if (pause_requested) {
+            pause_requested = false;
+            StartIfReady();
+        }
+    }
 
     void ClearQueue() {
         Stop();
@@ -125,8 +147,6 @@ public:
             m_AnimQueue.push(anim);
         }
 
-        if (!dispatch_pending) {
-            Start();
-        }
+        StartIfReady();
     }
 };
