@@ -16,6 +16,7 @@ class Animator :
     public Ticker,
     public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
     static constexpr auto failure_interval = std::chrono::milliseconds(10);
+    bool dispatch_pending{false};
 
     static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation) {
         if (!a_actor) {
@@ -79,11 +80,16 @@ class Animator :
             return;
         }
 
+        dispatch_pending = true;
         SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
             const auto a_actor = actor.get();
             if (!RunBeforePlay(a_actor, animation) || !Play(animation)) {
                 Stop();
                 UpdateInterval(failure_interval);
+            }
+            {
+                std::unique_lock lock(animQ_mutex);
+                dispatch_pending = false;
             }
             Start();
         });
@@ -119,6 +125,8 @@ public:
             m_AnimQueue.push(anim);
         }
 
-        Start();
+        if (!dispatch_pending) {
+            Start();
+        }
     }
 };
