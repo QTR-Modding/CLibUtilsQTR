@@ -15,6 +15,8 @@ struct Animation {
 class Animator :
     public Ticker,
     public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
+    static constexpr auto failure_interval = std::chrono::milliseconds(10);
+
     static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation) {
         if (!a_actor) {
             return false;
@@ -56,6 +58,10 @@ class Animator :
         return false;
     }
 
+    bool Play(const Animation& a_animation) {
+        return a_animation.a_idle ? PlayIdle(a_animation.a_idle) : PlayAnimation(a_animation.anim_name.c_str());
+    }
+
     void UpdateLoop() {
         std::unique_lock lock(animQ_mutex);
 
@@ -68,31 +74,19 @@ class Animator :
         auto animation = m_AnimQueue.front();
         m_AnimQueue.pop();
         UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
-        if (animation.a_idle) {
-            SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
-                const auto a_actor = actor.get();
-                if (RunBeforePlay(a_actor, animation) && PlayIdle(animation.a_idle)) {
-                    Start();
-                } else {
-                    Stop();
-                    UpdateInterval(std::chrono::milliseconds(10));
-                    Start();
-                }
-            });
-        } else if (!animation.anim_name.empty()) {
-            SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
-                const auto a_actor = actor.get();
-                if (RunBeforePlay(a_actor, animation) && PlayAnimation(animation.anim_name.c_str())) {
-                    Start();
-                } else {
-                    Stop();
-                    UpdateInterval(std::chrono::milliseconds(10));
-                    Start();
-                }
-            });
-        } else {
+        if (!animation.a_idle && animation.anim_name.empty()) {
             Start();
+            return;
         }
+
+        SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
+            const auto a_actor = actor.get();
+            if (!RunBeforePlay(a_actor, animation) || !Play(animation)) {
+                Stop();
+                UpdateInterval(failure_interval);
+            }
+            Start();
+        });
     }
 
 protected:
