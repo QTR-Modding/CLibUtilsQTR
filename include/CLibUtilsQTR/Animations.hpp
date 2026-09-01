@@ -9,7 +9,7 @@ struct Animation {
     std::string anim_name;
     unsigned int t_wait_ms = 0;
     uint32_t anim_id = 0;
-    std::function<bool(RE::Actor*, const Animation&)> before_play{};
+    std::function<bool(RE::Actor*, const Animation&, unsigned int&)> before_play{};
 };
 
 class Animator :
@@ -19,7 +19,8 @@ class Animator :
     bool dispatch_pending{false};
     bool pause_requested{false};
 
-    static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation) {
+    static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation,
+                              unsigned int& a_duration_ms) {
         if (!a_actor) {
             return false;
         }
@@ -27,7 +28,7 @@ class Animator :
             return true;
         }
         try {
-            return a_animation.before_play(a_actor, a_animation);
+            return a_animation.before_play(a_actor, a_animation, a_duration_ms);
         } catch (...) {
             return false;
         }
@@ -75,8 +76,8 @@ class Animator :
 
         auto animation = m_AnimQueue.front();
         m_AnimQueue.pop();
-        UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
         if (!animation.a_idle && animation.anim_name.empty()) {
+            UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
             StartIfReady();
             return;
         }
@@ -84,10 +85,13 @@ class Animator :
         dispatch_pending = true;
         SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
             const auto a_actor = actor.get();
-            if (!RunBeforePlay(a_actor, animation) || !Play(animation)) {
-                Stop();
+            auto duration = animation.t_wait_ms;
+            if (RunBeforePlay(a_actor, animation, duration) && Play(animation)) {
+                UpdateInterval(std::chrono::milliseconds(duration));
+            } else {
                 UpdateInterval(failure_interval);
             }
+
             {
                 std::unique_lock lock(animQ_mutex);
                 dispatch_pending = false;
@@ -131,10 +135,8 @@ public:
     }
 
     void ClearQueue() {
-        Stop();
-        UpdateInterval(std::chrono::milliseconds(0));
         std::unique_lock lock(animQ_mutex);
-        m_AnimQueue = std::queue<Animation>();
+        m_AnimQueue = {};
     }
 
     void Add2Q(const std::vector<Animation>& animations) {
