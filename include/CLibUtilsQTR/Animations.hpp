@@ -10,7 +10,7 @@ struct Animation {
     std::string anim_name;
     unsigned int t_wait_ms = 0;
     uint32_t anim_id = 0;
-    std::function<bool(RE::Actor*, const Animation&, unsigned int&)> before_play{};
+    std::function<bool(RE::Actor *, Animation &)> before_play{};
 };
 
 class Animator : public Ticker, public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
@@ -18,7 +18,7 @@ class Animator : public Ticker, public RE::BSTEventSink<RE::BSAnimationGraphEven
     bool dispatch_pending{false};
     bool pause_requested{false};
 
-    static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation, unsigned int& a_duration_ms) {
+    static bool RunBeforePlay(RE::Actor* a_actor, Animation& a_animation) {
         if (!a_actor) {
             return false;
         }
@@ -26,7 +26,7 @@ class Animator : public Ticker, public RE::BSTEventSink<RE::BSAnimationGraphEven
             return true;
         }
         try {
-            return a_animation.before_play(a_actor, a_animation, a_duration_ms);
+            return a_animation.before_play(a_actor, a_animation);
         } catch (...) {
             return false;
         }
@@ -83,11 +83,9 @@ class Animator : public Ticker, public RE::BSTEventSink<RE::BSAnimationGraphEven
         }
 
         dispatch_pending = true;
-        SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() {
-            const auto a_actor = actor.get();
-            auto duration = animation.t_wait_ms;
-            if (RunBeforePlay(a_actor, animation, duration) && Play(animation)) {
-                UpdateInterval(std::chrono::milliseconds(duration));
+        SKSE::GetTaskInterface()->AddTask([this, animation = std::move(animation)]() mutable {
+            if (const auto a_actor = actor.get(); RunBeforePlay(a_actor, animation) && Play(animation)) {
+                UpdateInterval(std::chrono::milliseconds(animation.t_wait_ms));
             } else {
                 UpdateInterval(failure_interval);
             }
@@ -103,7 +101,7 @@ class Animator : public Ticker, public RE::BSTEventSink<RE::BSAnimationGraphEven
 protected:
     void StartIfReady() {
         if (!dispatch_pending && !pause_requested) {
-            Ticker::Start();
+            Start();
         }
     }
 
@@ -116,8 +114,8 @@ public:
         : Ticker([this]() { UpdateLoop(); }, std::chrono::milliseconds(0)), actor(std::move(a_actor)) {
     }
 
-    virtual RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent* a_event,
-                                                  RE::BSTEventSource<RE::BSAnimationGraphEvent>*) = 0;
+    RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent* a_event,
+                                          RE::BSTEventSource<RE::BSAnimationGraphEvent>*) override = 0;
 
     void Pause() {
         std::unique_lock lock(animQ_mutex);
