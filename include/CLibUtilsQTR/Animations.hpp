@@ -6,21 +6,19 @@
 
 struct Animation {
     RE::TESIdleForm* a_idle = nullptr;
+    RE::ObjectRefHandle target{};
     std::string anim_name;
     unsigned int t_wait_ms = 0;
     uint32_t anim_id = 0;
     std::function<bool(RE::Actor*, const Animation&, unsigned int&)> before_play{};
 };
 
-class Animator :
-    public Ticker,
-    public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
+class Animator : public Ticker, public RE::BSTEventSink<RE::BSAnimationGraphEvent> {
     static constexpr auto failure_interval = std::chrono::milliseconds(10);
     bool dispatch_pending{false};
     bool pause_requested{false};
 
-    static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation,
-                              unsigned int& a_duration_ms) {
+    static bool RunBeforePlay(RE::Actor* a_actor, const Animation& a_animation, unsigned int& a_duration_ms) {
         if (!a_actor) {
             return false;
         }
@@ -62,7 +60,9 @@ class Animator :
     }
 
     bool Play(const Animation& a_animation) {
-        return a_animation.a_idle ? PlayIdle(a_animation.a_idle) : PlayAnimation(a_animation.anim_name.c_str());
+        return a_animation.a_idle
+                   ? PlayIdle(a_animation.a_idle, a_animation.target.get().get())
+                   : PlayAnimation(a_animation.anim_name.c_str());
     }
 
     void UpdateLoop() {
@@ -112,12 +112,12 @@ protected:
     std::queue<Animation> m_AnimQueue;
 
 public:
-    explicit Animator(RE::ActorHandlePtr a_actor) : Ticker([this]() { UpdateLoop(); }, std::chrono::milliseconds(0)),
-                                                    actor(std::move(a_actor)) {
+    explicit Animator(RE::ActorHandlePtr a_actor)
+        : Ticker([this]() { UpdateLoop(); }, std::chrono::milliseconds(0)), actor(std::move(a_actor)) {
     }
 
     virtual RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent* a_event,
-                                                  RE::BSTEventSource<RE::BSAnimationGraphEvent>*) =0;
+                                                  RE::BSTEventSource<RE::BSAnimationGraphEvent>*) = 0;
 
     void Pause() {
         std::unique_lock lock(animQ_mutex);
