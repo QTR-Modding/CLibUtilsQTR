@@ -5,7 +5,10 @@
 #include <detours/detours.h>
 
 namespace clib_utilsQTR {
-    // Install while no other thread can execute the target or destination.
+    // Based on https://github.com/RavenKZP/Particle-Wind/blob/bdc66a7415149ee65b1aa87924d0612d6afd7881/include/detour_stl.h#L7
+    // Install once, outside another Detours transaction, with matching signatures and calling conventions.
+    // Only the current thread is enlisted; prevent other threads from executing the target or destination
+    // until the returned original-function address is stored. Keep the destination loaded for the hook's lifetime.
     // Returns the original-function trampoline, or 0 if installation fails.
     template <class Func>
     [[nodiscard]] std::uintptr_t write_prologue_hook(std::uintptr_t a_src, Func* a_dest) {
