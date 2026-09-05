@@ -4,6 +4,7 @@
 #include "BoundingBox.hpp"
 #include "DrawDebug.hpp"
 #include "FormReader.hpp"
+#include "Hooks.hpp"
 #include "Papyrus.hpp"
 #include "PresetSettings.hpp"
 #include "Serialization.hpp"
