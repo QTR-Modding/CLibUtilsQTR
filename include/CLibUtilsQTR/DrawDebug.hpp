@@ -10,6 +10,8 @@ namespace DebugAPI_IMPL {
 
     constexpr float DRAW_LOC_MAX_DIF = 5.0f;
 
+    inline constexpr int32_t CAPSULE_SIDES = 16;
+
     constexpr float ROOT_TWO = std::numbers::sqrt2_v<float>;
 
 
@@ -140,6 +142,100 @@ namespace DebugAPI_IMPL {
         void draw_sphere(const RE::NiPoint3& a_center, const float r = 5.0f, const float size = 5.0f,
                          const int time = 3000) {
             DebugAPI::GetSingleton()->DrawSphere(a_center, r, time, Color, size);
+        }
+
+        inline void DrawCircleAxis(const RE::NiPoint3& center, const RE::NiPoint3& xAxis, const RE::NiPoint3& yAxis,
+                                   float radius, uint32_t segments, int liftetimeMS = 10,
+                                   const RE::NiColorA& color = {1.0f, 0.0f, 0.0f, 1.0f}, float lineThickness = 1) {
+            const float angleDelta = RE::NI_TWO_PI / segments;
+            RE::NiPoint3 lastVertex = center + xAxis * radius;
+
+            for (uint32_t i = 0; i < segments; i++) {
+                RE::NiPoint3 vertex =
+                    center + (xAxis * cosf(angleDelta * (i + 1)) + yAxis * sinf(angleDelta * (i + 1))) * radius;
+
+                DebugAPI::GetSingleton()->DrawLineForMS(lastVertex, vertex, liftetimeMS, color, lineThickness);
+
+                lastVertex = vertex;
+            }
+        }
+
+        inline void DrawHalfCircle(const RE::NiPoint3& center, const RE::NiPoint3& xAxis, const RE::NiPoint3& yAxis,
+                                   float radius, uint32_t segments, int liftetimeMS = 10,
+                                   const RE::NiColorA& color = {1.0f, 0.0f, 0.0f, 1.0f}, float lineThickness = 1) {
+            const float angleDelta = RE::NI_TWO_PI / segments;
+            RE::NiPoint3 lastVertex = center + xAxis * radius;
+
+            for (uint32_t i = 0; i < segments / 2; i++) {
+                RE::NiPoint3 vertex =
+                    center + (xAxis * cosf(angleDelta * (i + 1)) + yAxis * sinf(angleDelta * (i + 1))) * radius;
+
+                DebugAPI::GetSingleton()->DrawLineForMS(lastVertex, vertex, liftetimeMS, color, lineThickness);
+
+                lastVertex = vertex;
+            }
+        }
+
+        inline void DrawCollapsedCapsule(const RE::NiPoint3& center, float radius, int liftetimeMS = 10,
+                                         const RE::NiColorA& color = {1.0f, 0.0f, 0.0f, 1.0f},
+                                         float lineThickness = 1) {
+            const auto xAxis = RE::NiPoint3(1.0F, 0.0F, 0.0F);
+            const auto yAxis = RE::NiPoint3(0.0F, 1.0F, 0.0F);
+            const auto zAxis = RE::NiPoint3(0.0F, 0.0F, 1.0F);
+
+            DrawCircleAxis(center, xAxis, yAxis, radius, CAPSULE_SIDES, liftetimeMS, color, lineThickness);
+
+            DrawCircleAxis(center, xAxis, zAxis, radius, CAPSULE_SIDES, liftetimeMS, color, lineThickness);
+
+            DrawCircleAxis(center, yAxis, zAxis, radius, CAPSULE_SIDES, liftetimeMS, color, lineThickness);
+        }
+
+        inline void DrawCapsule(const RE::NiPoint3& vertexA, const RE::NiPoint3& vertexB, float radius,
+                                int liftetimeMS = 10, const RE::NiColorA& color = {1.0f, 0.0f, 0.0f, 1.0f},
+                                float lineThickness = 1) {
+            RE::NiPoint3 zAxis = vertexA - vertexB;
+
+            const auto axisLengthSquared = (zAxis.x * zAxis.x) + (zAxis.y * zAxis.y) + (zAxis.z * zAxis.z);
+
+            if (axisLengthSquared <= 1.0e-4F) {
+                DrawCollapsedCapsule((vertexA + vertexB) * 0.5F, radius, liftetimeMS, color, lineThickness);
+
+                return;
+            }
+
+            zAxis.Unitize();
+
+            RE::NiPoint3 upVector =
+                (fabs(zAxis.z) < (1.0f - 1.e-4f)) ? RE::NiPoint3(0.0f, 0.0f, 1.0f) : RE::NiPoint3(1.0f, 0.0f, 0.0f);
+
+            RE::NiPoint3 xAxis = upVector.UnitCross(zAxis);
+            RE::NiPoint3 yAxis = zAxis.Cross(xAxis);
+
+            DrawCircleAxis(vertexA, xAxis, yAxis, radius, CAPSULE_SIDES, liftetimeMS, color, lineThickness);
+
+            DrawCircleAxis(vertexB, xAxis, yAxis, radius, CAPSULE_SIDES, liftetimeMS, color, lineThickness);
+
+            DrawHalfCircle(vertexA, yAxis, zAxis, radius, CAPSULE_SIDES, liftetimeMS, color, lineThickness);
+
+            DrawHalfCircle(vertexA, xAxis, zAxis, radius, CAPSULE_SIDES, liftetimeMS, color, lineThickness);
+
+            RE::NiPoint3 negZAxis = -zAxis;
+
+            DrawHalfCircle(vertexB, yAxis, negZAxis, radius, CAPSULE_SIDES, liftetimeMS, color, lineThickness);
+
+            DrawHalfCircle(vertexB, xAxis, negZAxis, radius, CAPSULE_SIDES, liftetimeMS, color, lineThickness);
+
+            DebugAPI::GetSingleton()->DrawLineForMS(vertexA + xAxis * radius, vertexB + xAxis * radius, liftetimeMS,
+                                                    color, lineThickness);
+
+            DebugAPI::GetSingleton()->DrawLineForMS(vertexA - xAxis * radius, vertexB - xAxis * radius, liftetimeMS,
+                                                    color, lineThickness);
+
+            DebugAPI::GetSingleton()->DrawLineForMS(vertexA + yAxis * radius, vertexB + yAxis * radius, liftetimeMS,
+                                                    color, lineThickness);
+
+            DebugAPI::GetSingleton()->DrawLineForMS(vertexA - yAxis * radius, vertexB - yAxis * radius, liftetimeMS,
+                                                    color, lineThickness);
         }
 
         inline void DrawOBB(const DirectX::BoundingOrientedBox& obb) {
