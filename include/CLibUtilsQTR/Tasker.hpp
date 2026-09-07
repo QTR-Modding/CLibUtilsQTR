@@ -4,7 +4,6 @@
 #include <functional>
 #include <mutex>
 #include <queue>
-#include <REX/REX/Singleton.h>
 
 namespace clib_utilsQTR {
     struct Task {
@@ -22,8 +21,14 @@ namespace clib_utilsQTR {
         }
     };
 
-    class Tasker final : public REX::Singleton<Tasker> {
+    class Tasker final {
     public:
+        static Tasker* GetSingleton() {
+            // Keep the tasker alive until process exit; DLL teardown cannot safely join its workers.
+            static auto* singleton = new Tasker;
+            return singleton;
+        }
+
         void Start(size_t num_threads = std::thread::hardware_concurrency()) {
             std::lock_guard lock(mutex_);
             if (running_.load(std::memory_order_acquire)) {
@@ -144,6 +149,8 @@ namespace clib_utilsQTR {
         }
 
     private:
+        Tasker() = default;
+
         std::priority_queue<Task, std::vector<Task>, std::greater<>> task_queue_;
         mutable std::mutex mutex_;
         std::condition_variable cv_;
