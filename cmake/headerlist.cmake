@@ -3,6 +3,7 @@ set(headers ${headers}
 	include/CLibUtilsQTR/Animations.hpp
 	include/CLibUtilsQTR/BoundingBox.hpp
 	include/CLibUtilsQTR/DrawDebug.hpp
+	include/CLibUtilsQTR/DebugLocks.hpp
 	include/CLibUtilsQTR/FormReader.hpp
 	include/CLibUtilsQTR/Hooks.hpp
 	include/CLibUtilsQTR/Papyrus.hpp

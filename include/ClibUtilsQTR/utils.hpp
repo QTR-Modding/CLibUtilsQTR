@@ -3,6 +3,7 @@
 #include "Animations.hpp"
 #include "BoundingBox.hpp"
 #include "DrawDebug.hpp"
+#include "DebugLocks.hpp"
 #include "FormReader.hpp"
 #include "Hooks.hpp"
 #include "Papyrus.hpp"
