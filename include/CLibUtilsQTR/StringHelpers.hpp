@@ -1,5 +1,12 @@
 #pragma once
 
+#include <algorithm>
+#include <cctype>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <vector>
+
 namespace StringHelpers {
     template <typename T>
     std::string join(const T& container, const std::string_view& delimiter) {
