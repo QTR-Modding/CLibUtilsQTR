@@ -8,7 +8,7 @@
     "hooks",
     "json",
     "skyrim",
-    "yaml"
+    "skyrim-yaml"
   ],
   "features": {
     "hooks": {
@@ -29,7 +29,7 @@
         "clib-util"
       ]
     },
-    "yaml": {
+    "skyrim-yaml": {
       "description": "YAML presets for Skyrim forms.",
       "dependencies": [
         {

@@ -59,7 +59,7 @@ Omit `features` to install only the dependency-free base package.
 | `skyrim` | Animation, bounding box, debug drawing, forms, Papyrus, serialization, and TXT preset helpers | `clib-util` |
 | `hooks` | `Hooks.hpp` | `detours` |
 | `json` | `PresetHelpers/Config.hpp`, `PresetHelpers/Getters.hpp` | `rapidjson` |
-| `yaml` | `PresetHelpers/PresetHelpersYAML.hpp` | `yaml-cpp` and the `skyrim` feature |
+| `skyrim-yaml` | `PresetHelpers/PresetHelpersYAML.hpp` | `yaml-cpp` and the `skyrim` feature |
 
 Include the specific headers you use. `utils.hpp` remains the all-in-one
 header and requires all features. Features control dependency installation;
