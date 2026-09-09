@@ -38,6 +38,35 @@ your-project/
 
 ```
 
+## Optional dependencies
+
+All features below are enabled by default, preserving the full-library setup.
+To install only hooks, for example:
+
+```json
+{
+  "name": "clib-utils-qtr",
+  "default-features": false,
+  "features": ["hooks"]
+}
+```
+
+Omit `features` to install only the dependency-free base package.
+
+| Feature | Headers | Dependencies |
+| --- | --- | --- |
+| Base (always available) | `DebugLocks.hpp`, `StringHelpers.hpp`, `Tasker.hpp`, `Ticker.hpp`, `PresetSettings.hpp` | None |
+| `skyrim` | Animation, bounding box, debug drawing, forms, Papyrus, serialization, and TXT preset helpers | `clib-util` |
+| `hooks` | `Hooks.hpp` | `detours` |
+| `json` | `PresetHelpers/Config.hpp`, `PresetHelpers/Getters.hpp` | `rapidjson` |
+| `yaml-skyrim` | `PresetHelpers/PresetHelpersYAML.hpp` | `yaml-cpp` and the `skyrim` feature |
+
+Include the specific headers you use. `utils.hpp` remains the all-in-one
+header and requires all features. Features control dependency installation;
+they do not remove headers or change the C++ API. Skyrim helpers still expect
+your project's CommonLibSSE/SKSE setup. Link Detours or yaml-cpp when using
+their helpers.
+
 ## Debug lock guards
 
 Include `CLibUtilsQTR/DebugLocks.hpp` and give each mutex a distinct tag:

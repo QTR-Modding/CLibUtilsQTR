@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <string_view>
+
 namespace clib_utilsQTR {
     template <std::size_t S>
     struct PresetPool {

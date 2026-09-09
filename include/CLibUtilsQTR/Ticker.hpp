@@ -1,5 +1,12 @@
 #pragma once
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <functional>
+#include <mutex>
+#include <optional>
+#include <thread>
 
 class Ticker {
     enum class State {
