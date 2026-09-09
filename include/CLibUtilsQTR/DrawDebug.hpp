@@ -84,6 +84,7 @@ namespace DebugAPI_IMPL {
         float ScreenResY;
 
     private:
+        // Caller must hold mutex_ exclusively.
         DebugAPILine* GetExistingLine(const RE::NiPoint3& from, const RE::NiPoint3& to, const RE::NiColorA& color,
                                       float lineThickness) const;
     };
@@ -452,6 +453,7 @@ namespace DebugAPI_IMPL {
     inline void DebugAPI::DrawLineForMS(const RE::NiPoint3& from, const RE::NiPoint3& to, const int liftetimeMS,
                                         const RE::NiColorA& color,
                                         const float lineThickness) {
+        std::unique_lock lock(mutex_);
         if (DebugAPILine* oldLine = GetExistingLine(from, to, color, lineThickness)) {
             oldLine->From = from;
             oldLine->To = to;
@@ -461,7 +463,6 @@ namespace DebugAPI_IMPL {
         }
 
         const auto newLine = new DebugAPILine(from, to, color, lineThickness, GetTickCount64() + liftetimeMS);
-        std::unique_lock lock(mutex_);
         LinesToDraw.push_back(newLine);
     }
 
@@ -493,7 +494,6 @@ namespace DebugAPI_IMPL {
     inline DebugAPILine* DebugAPI::GetExistingLine(const RE::NiPoint3& from, const RE::NiPoint3& to,
                                                    const RE::NiColorA& color,
                                                    const float lineThickness) const {
-        std::shared_lock lock(mutex_);
         for (int i = 0; i < LinesToDraw.size(); i++) {
             DebugAPILine* line = LinesToDraw[i];
 
