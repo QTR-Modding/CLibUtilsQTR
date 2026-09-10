@@ -1,5 +1,7 @@
 # CLibUtilsQTR
 
+[User guides and examples](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started). Wiki pages are maintained in `docs/wiki` and published when merged into `main`.
+
 ---
 
 ## Installation (via vcpkg)
@@ -56,7 +58,7 @@ Omit `features` to install only the dependency-free base package.
 | Feature | Headers | Dependencies |
 | --- | --- | --- |
 | Base (always available) | `DebugLocks.hpp`, `StringHelpers.hpp`, `Tasker.hpp`, `Ticker.hpp`, `PresetSettings.hpp` | None |
-| `skyrim` | Animation, bounding box, debug drawing, forms (including `DynamicFormTracker.hpp`), logging, Papyrus, serialization, and TXT preset helpers | `clib-util` |
+| `skyrim` | Animation, bounding box, debug drawing, forms (including `DynamicFormTracker.hpp`), logging, Papyrus, serialization, and TXT preset helpers | `clib-util`, `spdlog` |
 | `hooks` | `Hooks.hpp` | `detours` |
 | `json` | `PresetHelpers/Config.hpp`, `PresetHelpers/Getters.hpp` | `rapidjson` |
 | `yaml-skyrim` | `PresetHelpers/PresetHelpersYAML.hpp` | `yaml-cpp` and the `skyrim` feature |
