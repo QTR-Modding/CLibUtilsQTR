@@ -1,0 +1,50 @@
+name: Sync wiki
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/wiki/**"
+      - ".github/workflows/sync-wiki.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-wiki
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Publish docs/wiki
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Publish wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          gh auth setup-git
+          git clone "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.wiki.git" wiki-target
+          rsync --archive --delete --exclude='.git/' docs/wiki/ wiki-target/
+
+          git -C wiki-target config user.name "github-actions[bot]"
+          git -C wiki-target config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C wiki-target add --all
+
+          if git -C wiki-target diff --cached --quiet; then
+            echo "Wiki is already up to date."
+            exit 0
+          fi
+
+          git -C wiki-target commit -m "Sync wiki from ${GITHUB_SHA::7}"
+          git -C wiki-target push
