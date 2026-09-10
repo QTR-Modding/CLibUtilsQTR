@@ -4,6 +4,7 @@ set(headers ${headers}
 	include/CLibUtilsQTR/BoundingBox.hpp
 	include/CLibUtilsQTR/DrawDebug.hpp
 	include/CLibUtilsQTR/DebugLocks.hpp
+	include/CLibUtilsQTR/DynamicFormTracker.hpp
 	include/CLibUtilsQTR/FormReader.hpp
 	include/CLibUtilsQTR/Hooks.hpp
 	include/CLibUtilsQTR/Logging.hpp

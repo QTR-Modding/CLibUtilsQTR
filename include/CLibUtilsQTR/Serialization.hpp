@@ -1,10 +1,7 @@
 #pragma once
+#include <SKSE/SKSE.h>
 #include <map>
 #include <mutex>
-
-namespace SKSE {
-    class SerializationInterface;
-}
 
 namespace Serialization {
     // Credits: https:// github.com/ozooma10/OSLAroused/blob/29ac62f220fadc63c829f6933e04be429d4f96b0/src/PersistedData.cpp
@@ -59,7 +56,7 @@ namespace Serialization {
                 }
             }
         } catch (const std::exception& e) {
-            logger::error("Error encoding string: {}", e.what());
+            SKSE::log::error("Error encoding string: {}", e.what());
             return encodeString("ERROR");
         }
         return encodedValues;

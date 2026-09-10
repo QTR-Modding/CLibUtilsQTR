@@ -30,11 +30,11 @@ To use the CLibUtilsQTR port locally, copy the cmake/ folder from the CLibUtilsQ
 
 ```markdown
 your-project/
-└── cmake/
-    └── ports/
-        └── clib-utils-qtr/
-            ├── portfile.cmake
-            └── vcpkg.json
+â””â”€â”€ cmake/
+    â””â”€â”€ ports/
+        â””â”€â”€ clib-utils-qtr/
+            â”œâ”€â”€ portfile.cmake
+            â””â”€â”€ vcpkg.json
 
 ```
 
@@ -56,7 +56,7 @@ Omit `features` to install only the dependency-free base package.
 | Feature | Headers | Dependencies |
 | --- | --- | --- |
 | Base (always available) | `DebugLocks.hpp`, `StringHelpers.hpp`, `Tasker.hpp`, `Ticker.hpp`, `PresetSettings.hpp` | None |
-| `skyrim` | Animation, bounding box, debug drawing, forms, logging, Papyrus, serialization, and TXT preset helpers | `clib-util` |
+| `skyrim` | Animation, bounding box, debug drawing, forms (including `DynamicFormTracker.hpp`), logging, Papyrus, serialization, and TXT preset helpers | `clib-util` |
 | `hooks` | `Hooks.hpp` | `detours` |
 | `json` | `PresetHelpers/Config.hpp`, `PresetHelpers/Getters.hpp` | `rapidjson` |
 | `yaml-skyrim` | `PresetHelpers/PresetHelpersYAML.hpp` | `yaml-cpp` and the `skyrim` feature |
