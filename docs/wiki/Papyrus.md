@@ -10,7 +10,7 @@ const bool dispatched =
     Papyrus::CallFunction("MyPluginUtils", "NotifyReady");
 ```
 
-The installed, compiled `MyPluginUtils.psc` for this example contains:
+The `MyPluginUtils.psc` source for this example contains:
 
 ```papyrus
 Scriptname MyPluginUtils
@@ -19,6 +19,8 @@ Function NotifyReady() Global
     Debug.Trace("MyPlugin is ready")
 EndFunction
 ```
+
+Compile this source with the Papyrus compiler and include the resulting `Scripts/MyPluginUtils.pex` in your mod, so it is installed at `Data/Scripts/MyPluginUtils.pex`. The game loads the compiled `.pex`; the `.psc` source alone is not enough.
 
 `CallFunction()` dispatches a static Papyrus function. Its boolean result describes dispatch, not script completion or the function's result. Additional arguments follow the function name and must match the script parameters.
 
