@@ -12,6 +12,8 @@ Select only this feature in your vcpkg manifest:
 
 Follow [Getting Started](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started) to install the overlay and add its include directory. Without vcpkg, add this repository's `include` directory to your project. MSVC links Crypt32 through the header.
 
+If another library depends on this module, keep the same explicit dependency in the application's top-level manifest too. Vcpkg can otherwise expand the transitive dependency's default features and request Skyrim packages.
+
 ```cpp
 #include <CLibUtilsQTR/Signing.hpp>
 #include "ProviderSigningKey.hpp" // Your fixed SigningKeyHash, not a private key.
