@@ -30,11 +30,11 @@ To use the CLibUtilsQTR port locally, copy the cmake/ folder from the CLibUtilsQ
 
 ```markdown
 your-project/
-â””â”€â”€ cmake/
-    â””â”€â”€ ports/
-        â””â”€â”€ clib-utils-qtr/
-            â”œâ”€â”€ portfile.cmake
-            â””â”€â”€ vcpkg.json
+└── cmake/
+    └── ports/
+        └── clib-utils-qtr/
+            ├── portfile.cmake
+            └── vcpkg.json
 
 ```
 
