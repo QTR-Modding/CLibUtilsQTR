@@ -6,6 +6,7 @@ set(headers ${headers}
 	include/CLibUtilsQTR/DebugLocks.hpp
 	include/CLibUtilsQTR/FormReader.hpp
 	include/CLibUtilsQTR/Hooks.hpp
+	include/CLibUtilsQTR/Logging.hpp
 	include/CLibUtilsQTR/Papyrus.hpp
 	include/CLibUtilsQTR/PresetSettings.hpp
 	include/CLibUtilsQTR/Serialization.hpp

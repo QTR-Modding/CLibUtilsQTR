@@ -56,7 +56,7 @@ Omit `features` to install only the dependency-free base package.
 | Feature | Headers | Dependencies |
 | --- | --- | --- |
 | Base (always available) | `DebugLocks.hpp`, `StringHelpers.hpp`, `Tasker.hpp`, `Ticker.hpp`, `PresetSettings.hpp` | None |
-| `skyrim` | Animation, bounding box, debug drawing, forms, Papyrus, serialization, and TXT preset helpers | `clib-util` |
+| `skyrim` | Animation, bounding box, debug drawing, forms, logging, Papyrus, serialization, and TXT preset helpers | `clib-util` |
 | `hooks` | `Hooks.hpp` | `detours` |
 | `json` | `PresetHelpers/Config.hpp`, `PresetHelpers/Getters.hpp` | `rapidjson` |
 | `yaml-skyrim` | `PresetHelpers/PresetHelpersYAML.hpp` | `yaml-cpp` and the `skyrim` feature |
@@ -66,6 +66,30 @@ header and requires all features. Features control dependency installation;
 they do not remove headers or change the C++ API. Skyrim helpers still expect
 your project's CommonLibSSE/SKSE setup. Link Detours or yaml-cpp when using
 their helpers.
+
+## Logging
+
+In your SKSE plugin's load entry point:
+
+```cpp
+#include <CLibUtilsQTR/Logging.hpp>
+
+clib_utilsQTR::SetupLog();
+```
+
+This uses the plugin declaration's name and the SKSE log directory. Each log
+rotates at 2 MiB, retaining two backups, and starts a new file each launch.
+Debug builds log and flush at `trace`; release builds log and flush at `info`.
+Link your project's CommonLibSSE and spdlog as usual.
+
+Override only the settings you need through `LogOptions`:
+
+```cpp
+clib_utilsQTR::SetupLog({.max_file_size = 4 * 1024 * 1024, .backup_count = 1});
+```
+
+`level` controls which messages are logged. `flush_level` controls which messages
+flush the file buffer immediately and defaults to the selected `level`.
 
 ## Debug lock guards
 

@@ -6,6 +6,7 @@
 #include "DebugLocks.hpp"
 #include "FormReader.hpp"
 #include "Hooks.hpp"
+#include "Logging.hpp"
 #include "Papyrus.hpp"
 #include "PresetSettings.hpp"
 #include "Serialization.hpp"
