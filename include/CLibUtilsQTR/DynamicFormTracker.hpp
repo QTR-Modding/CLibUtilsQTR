@@ -44,8 +44,10 @@ namespace clib_utilsQTR {
                 return false;
             }
 
-            const std::string editorid = lhs.second;
-            Serialization::write_string(serializationInterface, editorid);
+            if (!Serialization::write_string(serializationInterface, lhs.second)) {
+                SKSE::log::error("Failed to save EditorID");
+                return false;
+            }
 
             // save the number of rhs records
             const auto numRhsRecords = rhs.size();
@@ -77,22 +79,18 @@ namespace clib_utilsQTR {
     inline bool DFSaveLoadData::Load(SKSE::SerializationInterface* serializationInterface) {
         assert(serializationInterface);
 
-        std::size_t recordDataSize;
-        serializationInterface->ReadRecordData(recordDataSize);
-        SKSE::log::info("Loading data from serialization interface with size: {}", recordDataSize);
-
         Locker locker(m_Lock);
         m_Data.clear();
 
-        for (auto i = 0; std::cmp_less(i, recordDataSize); i++) {
+        std::size_t recordDataSize;
+        if (serializationInterface->ReadRecordData(recordDataSize) != sizeof(recordDataSize)) return false;
+        SKSE::log::trace("Loading data from serialization interface with size: {}", recordDataSize);
+
+        for (std::size_t i = 0; i < recordDataSize; i++) {
             DFSaveDataRHS rhs;
 
-            std::uint32_t formid = 0;
-            serializationInterface->ReadRecordData(formid);
-            if (!serializationInterface->ResolveFormID(formid, formid)) {
-                SKSE::log::error("Failed to resolve form ID, 0x{:X}.", formid);
-                continue;
-            }
+            RE::FormID formid;
+            if (serializationInterface->ReadRecordData(formid) != sizeof(formid)) return false;
 
             std::string editorid;
             if (!Serialization::read_string(serializationInterface, editorid)) {
@@ -100,18 +98,21 @@ namespace clib_utilsQTR {
                 return false;
             }
 
-            DFSaveDataLHS lhs({formid, editorid});
+            std::size_t rhsSize;
+            if (serializationInterface->ReadRecordData(rhsSize) != sizeof(rhsSize)) return false;
 
-            std::size_t rhsSize = 0;
-            serializationInterface->ReadRecordData(rhsSize);
-
-            for (auto j = 0; std::cmp_less(j, rhsSize); j++) {
+            for (std::size_t j = 0; j < rhsSize; j++) {
                 DFSaveData rhs_;
-                serializationInterface->ReadRecordData(rhs_);
+                if (serializationInterface->ReadRecordData(rhs_) != sizeof(rhs_)) return false;
                 rhs.push_back(rhs_);
             }
 
-            m_Data[lhs] = rhs;
+            // Consume the complete entry before skipping an unresolved base.
+            if (!serializationInterface->ResolveFormID(formid, formid)) {
+                SKSE::log::error("Failed to resolve form ID, 0x{:X}.", formid);
+                continue;
+            }
+            m_Data[{formid, editorid}] = std::move(rhs);
         }
 
         return true;
@@ -620,8 +621,8 @@ namespace clib_utilsQTR {
         std::vector<std::pair<RE::FormID, std::string>> GetSourceForms() {
             std::set<std::pair<RE::FormID, std::string>> source_forms;
             std::shared_lock lock(forms_mutex);
-            for (const auto& base : forms | std::views::keys) {
-                source_forms.insert(base);
+            for (const auto& [base, formset] : forms) {
+                if (!formset.empty()) source_forms.insert(base);
             }
             lock.unlock();
             std::shared_lock lock2(act_effs_mutex);
@@ -741,11 +742,11 @@ namespace clib_utilsQTR {
                 SKSE::log::warn("Base form with ID {:x} not found in forms.", baseID);
                 return;
             }
-            if (!FormReader::GetFormByID(dynamic_formid)) {
+            const auto form = FormReader::GetFormByID(dynamic_formid);
+            if (!form) {
                 SKSE::log::warn("Form with ID {:x} not found in forms.", dynamic_formid);
                 return;
             }
-            const auto form = FormReader::GetFormByID(dynamic_formid);
             if (!underlying_check(base_form, form)) {
                 SKSE::log::warn("Underlying check failed for form with ID {:x}.", dynamic_formid);
                 return;
@@ -753,7 +754,7 @@ namespace clib_utilsQTR {
             ReviveDynamicForm(form, base_form);
             std::unique_lock lock(protected_forms_mutex);
             std::unique_lock lock2(forms_mutex);
-            const std::pair base{baseID, baseEditorID};
+            const std::pair base{base_form->GetFormID(), clib_util::editorID::get_editorID(base_form)};
             for (auto& [previous_base, formset] : forms) {
                 if (previous_base != base) formset.erase(dynamic_formid);
             }
@@ -794,7 +795,7 @@ namespace clib_utilsQTR {
             int n_act_effs = 0;
             std::unordered_set<RE::FormID> act_effs_temp;
             for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
-                if (const auto* act_eff = *it) {
+                if (const auto* act_eff = *it; act_eff && act_eff->spell) {
                     if (const auto act_eff_formid = act_eff->spell->GetFormID(); active_forms.contains(act_eff_formid)) {
                         if (act_effs_temp.contains(act_eff_formid))
                             SKSE::log::warn(
@@ -933,11 +934,12 @@ namespace clib_utilsQTR {
         void Print() {
             std::shared_lock lock(forms_mutex);
             for (const auto& [base, formset] : forms) {
-                SKSE::log::info("---------------------Base formid: {:x}, EditorID: {}---------------------", base.first,
+                SKSE::log::trace("---------------------Base formid: {:x}, EditorID: {}---------------------", base.first,
                              base.second);
                 for (const auto _formid : formset) {
-                    SKSE::log::info("Dynamic formid: {:x} with name: {}", _formid,
-                                 FormReader::GetFormByID(_formid)->GetName());
+                    if (const auto form = FormReader::GetFormByID(_formid)) {
+                        SKSE::log::trace("Dynamic formid: {:x} with name: {}", _formid, form->GetName());
+                    }
                 }
             }
         }
