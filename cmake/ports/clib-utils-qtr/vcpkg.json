@@ -11,10 +11,6 @@
     "yaml-skyrim"
   ],
   "features": {
-    "signing": {
-      "description": "Windows x64 DLL signature verification and verified provider binding.",
-      "supports": "windows & x64"
-    },
     "hooks": {
       "description": "Windows prologue hooks using Microsoft Detours.",
       "dependencies": [

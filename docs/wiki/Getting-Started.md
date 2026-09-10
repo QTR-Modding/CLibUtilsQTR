@@ -47,14 +47,13 @@ A vcpkg feature selects external dependencies. All headers are installed regardl
 
 | Feature | Helpers | Dependencies installed |
 | --- | --- | --- |
-| Base package | Strings, debug locks, Tasker, Ticker, preset values | None |
+| Base package | Strings, debug locks, Tasker, Ticker, preset values, DLL signing | None |
 | `skyrim` | Logging, forms, TXT groups, animation, geometry, drawing, Papyrus, serialization | `clib-util`, `spdlog` |
 | `hooks` | Prologue hooks | Detours |
 | `json` | JSON fields | RapidJSON |
-| `signing` | DLL signing and verified provider binding | Windows x64 Crypt32; no packages |
 | `yaml-skyrim` | YAML form lists | `skyrim`, yaml-cpp |
 
-With `default-features` false, omit `features` for the base package alone. The plain dependency `"clib-utils-qtr"` enables the existing Skyrim, hooks, JSON and YAML features. Signing is opt-in. The umbrella header `ClibUtilsQTR/utils.hpp` covers the existing helpers; include `CLibUtilsQTR/Signing.hpp` separately for signing.
+With `default-features` false, omit `features` for the base package, including signing. The plain dependency `"clib-utils-qtr"` enables the Skyrim, hooks, JSON and YAML features. Include `CLibUtilsQTR/Signing.hpp` for signing (Windows x64 only); it needs no optional feature. The umbrella header `ClibUtilsQTR/utils.hpp` also includes dependency-heavy helpers.
 
 For Skyrim code, keep your plugin's CommonLibVR-MIT and SKSE setup. The `skyrim` feature does not create a plugin target or initialize SKSE. Several engine headers expect engine declarations and standard headers from the plugin's PCH. Individual guides identify additional requirements.
 

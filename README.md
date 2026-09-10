@@ -42,7 +42,7 @@ your-project/
 
 ## Optional dependencies
 
-The existing features remain enabled by default. Signing is opt-in.
+The features below remain enabled by default. Dependency-free helpers, including signing, are part of base.
 To install only hooks, for example:
 
 ```json
@@ -57,10 +57,9 @@ Omit `features` to install only the dependency-free base package.
 
 | Feature | Headers | Dependencies |
 | --- | --- | --- |
-| Base (always available) | `DebugLocks.hpp`, `StringHelpers.hpp`, `Tasker.hpp`, `Ticker.hpp`, `PresetSettings.hpp` | None |
+| Base (always available) | `DebugLocks.hpp`, `StringHelpers.hpp`, `Tasker.hpp`, `Ticker.hpp`, `PresetSettings.hpp`, `Signing.hpp` | None |
 | `skyrim` | Animation, bounding box, debug drawing, forms, logging, Papyrus, serialization, and TXT preset helpers | `clib-util`, `spdlog` |
 | `hooks` | `Hooks.hpp` | `detours` |
-| `signing` | `Signing.hpp` | Windows Crypt32; no package dependencies |
 | `json` | `PresetHelpers/Config.hpp`, `PresetHelpers/Getters.hpp` | `rapidjson` |
 | `yaml-skyrim` | `PresetHelpers/PresetHelpersYAML.hpp` | `yaml-cpp` and the `skyrim` feature |
 
@@ -69,6 +68,8 @@ signing uses its own `Signing.hpp` header. Features control dependency installat
 they do not remove headers or change the C++ API. Skyrim helpers still expect
 your project's CommonLibSSE/SKSE setup. Link Detours or yaml-cpp when using
 their helpers.
+
+`Signing.hpp` requires Windows x64 and the Windows SDK, but no external packages.
 
 ## Logging
 

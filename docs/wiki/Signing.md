@@ -4,10 +4,10 @@ The `signing` module verifies Windows x64 DLLs signed with RSA/SHA-256 and resol
 
 ## Add it to a client
 
-Select only this feature in your vcpkg manifest:
+Signing is part of the dependency-free base package. Disable optional dependencies in your vcpkg manifest:
 
 ```json
-{ "name": "clib-utils-qtr", "default-features": false, "features": ["signing"] }
+{ "name": "clib-utils-qtr", "default-features": false }
 ```
 
 Follow [Getting Started](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started) to install the overlay and add its include directory. Without vcpkg, add this repository's `include` directory to your project. MSVC links Crypt32 through the header.
