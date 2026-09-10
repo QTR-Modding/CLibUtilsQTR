@@ -220,16 +220,6 @@ namespace clib_utilsQTR {
             return false;
         }
 
-        [[maybe_unused]] RE::TESForm* GetOGFormOfDynamic(const RE::FormID dynamic_formid) {
-            std::shared_lock lock(forms_mutex);
-            for (const auto& [base_pair, dyn_formset] : forms) {
-                if (dyn_formset.contains(dynamic_formid)) {
-                    return FormReader::GetFormByID(base_pair.first, base_pair.second);
-                }
-            }
-            return nullptr;
-        }
-
         static void ReviveDynamicForm(RE::TESForm* fake, RE::TESForm* base, const RE::FormID setFormID = 0) {
             fake->Copy(base);
             const auto weaponBaseForm = base->As<RE::TESObjectWEAP>();
@@ -326,6 +316,10 @@ namespace clib_utilsQTR {
             copyComponent<RE::TESAttackDamageForm>(base, fake);
 
             copyComponent<RE::TESBipedModelForm>(base, fake);
+
+            copyComponent<RE::BGSBipedObjectForm>(base, fake);
+
+            copyComponent<RE::TESRaceForm>(base, fake);
 
             if (setFormID != 0) fake->SetFormID(setFormID, false);
         }
@@ -428,8 +422,10 @@ namespace clib_utilsQTR {
             return nullptr;
         }
 
-        bool _delete(const std::pair<RE::FormID, std::string>& base, const RE::FormID dynamic_formid) {
-            if (auto lock = std::shared_lock(protected_forms_mutex); protected_forms.contains(dynamic_formid)) {
+        bool _delete(const std::pair<RE::FormID, std::string>& base, const RE::FormID dynamic_formid,
+                     const bool delete_protected = false) {
+            if (auto lock = std::shared_lock(protected_forms_mutex);
+                !delete_protected && protected_forms.contains(dynamic_formid)) {
                 SKSE::log::warn("Form with ID {:x} is protected.", dynamic_formid);
                 return false;
             }
@@ -473,9 +469,11 @@ namespace clib_utilsQTR {
             std::unique_lock lock(forms_mutex);
             std::unique_lock lock2(customIDforms_mutex);
             std::unique_lock lock3(active_forms_mutex);
+            std::unique_lock lock4(protected_forms_mutex);
             forms[base].erase(dynamic_formid);
             customIDforms.erase(dynamic_formid);
             active_forms.erase(dynamic_formid);
+            protected_forms.erase(dynamic_formid);
             return true;
         }
 
@@ -544,6 +542,24 @@ namespace clib_utilsQTR {
             return true;
         }
 
+        void DeleteForms(const bool delete_all) {
+            std::shared_lock lock(forms_mutex);
+            for (auto& [base, formset] : forms) {
+                size_t index = 0;
+                while (index < formset.size()) {
+                    auto it = formset.begin();
+                    std::advance(it, index);
+                    if (delete_all || (!IsActive(*it) && !IsProtected(*it))) {
+                        lock.unlock();
+                        if (!_delete(base, *it, delete_all)) {
+                            index++;
+                        }
+                        lock.lock();
+                    } else index++;
+                }
+            }
+        }
+
     public:
         static DynamicFormTracker* GetSingleton() {
             static DynamicFormTracker singleton;
@@ -553,6 +569,17 @@ namespace clib_utilsQTR {
         const unsigned int form_limit = 10000;
 
         const char* GetType() override { return "DynamicFormTracker"; }
+
+        /// Return the base form used to create this derivative, or nullptr if untracked.
+        [[nodiscard]] RE::TESForm* GetOGFormOfDynamic(const RE::FormID dynamic_formid) {
+            std::shared_lock lock(forms_mutex);
+            for (const auto& [base_pair, dyn_formset] : forms) {
+                if (dyn_formset.contains(dynamic_formid)) {
+                    return FormReader::GetFormByID(base_pair.first, base_pair.second);
+                }
+            }
+            return nullptr;
+        }
 
         bool IsActive(const RE::FormID a_formid) {
             std::shared_lock lock(active_forms_mutex);
@@ -576,23 +603,18 @@ namespace clib_utilsQTR {
             return {};
         }
 
+        /// Delete only inactive, unprotected forms.
         void DeleteInactives() {
             SKSE::log::trace("Deleting inactives.");
-            std::shared_lock lock(forms_mutex);
-            for (auto& [base, formset] : forms) {
-                size_t index = 0;
-                while (index < formset.size()) {
-                    auto it = formset.begin();
-                    std::advance(it, index);
-                    if (!IsActive(*it) && !IsProtected(*it)) {
-                        lock.unlock();
-                        if (!_delete(base, *it)) {
-                            index++;
-                        }
-                        lock.lock();
-                    } else index++;
-                }
-            }
+            DeleteForms(false);
+        }
+
+        /// Explicit teardown: delete tracked forms, including active/protected ones.
+        /// The caller must first remove or replace their uses in the game world.
+        void DeleteAll() {
+            SKSE::log::trace("Deleting all.");
+            DeleteForms(true);
+            CleanseFormsets();
         }
 
         std::vector<std::pair<RE::FormID, std::string>> GetSourceForms() {
@@ -636,7 +658,8 @@ namespace clib_utilsQTR {
             else if (IsTracked(dynamic_formid)) customIDforms.insert({dynamic_formid, custom_id});
         }
 
-        // tries to fetch by custom id. regardless, returns formid if there is in the bank
+        /// With a custom ID, return only its assigned form; return 0 if absent.
+        /// With std::nullopt, fetch only an inactive form without a custom ID.
         RE::FormID Fetch(const RE::FormID baseFormID, const std::string& baseEditorID,
                      const std::optional<uint32_t> customID) {
             auto* base_form = FormReader::GetFormByID(baseFormID, baseEditorID);
@@ -661,6 +684,8 @@ namespace clib_utilsQTR {
             return 0;
         }
 
+        /// Reuse the requested assignment, or an unassigned inactive form, or create one.
+        /// A reused/new form receives customID when supplied; other assignments stay intact.
         template <typename T>
         RE::FormID FetchCreate(const RE::FormID baseFormID, const std::string baseEditorID,
                            const std::optional<uint32_t> customID) {
@@ -675,12 +700,6 @@ namespace clib_utilsQTR {
             if (customID.has_value()) {
                 const auto new_formid = GetByCustomID(customID.value(), baseFormID, baseEditorID);
                 if (const auto dyn_form = _yield(new_formid, base_form)) return dyn_form->GetFormID();
-            } else if (const auto formset = GetFormSet(baseFormID, baseEditorID); !formset.empty()) {
-                for (const auto _formid : formset) {
-                    if (IsActive(_formid)) continue;
-                    if (const auto dyn_form = _yield(_formid, base_form)) return dyn_form->GetFormID();
-                    //else if (!GetFormByID(_formid)) Delete({baseFormID, baseEditorID}, _formid);
-                }
             }
 
             // before creating new one, try to find one from the bank without custom id
@@ -744,6 +763,15 @@ namespace clib_utilsQTR {
 
         void Unreserve(const RE::FormID dynamic_formid) {
             std::unique_lock lock(protected_forms_mutex);
+            protected_forms.erase(dynamic_formid);
+        }
+
+        /// Release an assignment for reuse: clears active, custom-ID, and protected state.
+        /// The form stays in its original base form's bank and is not deleted.
+        void SetInactive(const RE::FormID dynamic_formid) {
+            std::scoped_lock lock(active_forms_mutex, customIDforms_mutex, protected_forms_mutex);
+            active_forms.erase(dynamic_formid);
+            customIDforms.erase(dynamic_formid);
             protected_forms.erase(dynamic_formid);
         }
 
