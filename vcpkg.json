@@ -1,7 +1,7 @@
 {
   "name": "clib-utils-qtr",
   "version-string": "2.3.0",
-  "port-version": 2,
+  "port-version": 3,
   "homepage": "https://github.com/QTR-Modding/CLibUtilsQTR",
   "license": "MIT",
   "default-features": [
@@ -11,6 +11,10 @@
     "yaml-skyrim"
   ],
   "features": {
+    "signing": {
+      "description": "Windows x64 DLL signature verification and verified provider binding.",
+      "supports": "windows & x64"
+    },
     "hooks": {
       "description": "Windows prologue hooks using Microsoft Detours.",
       "dependencies": [

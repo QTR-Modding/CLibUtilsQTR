@@ -12,3 +12,4 @@
 10. [Animations](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Animations)
 11. [Geometry and Drawing](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Geometry-and-Drawing)
 12. [Serialization](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Serialization)
+13. [DLL Signing](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Signing)

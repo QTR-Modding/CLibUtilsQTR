@@ -1,4 +1,10 @@
 set(headers ${headers}
+    include/CLibUtilsQTR/Signing.hpp
+    include/CLibUtilsQTR/Signing/Authenticode.hpp
+    include/CLibUtilsQTR/Signing/PeImage.hpp
+    include/CLibUtilsQTR/Signing/VerifiedProvider.hpp
+    include/CLibUtilsQTR/Signing/ProviderBinding.hpp
+    include/CLibUtilsQTR/Signing/CommandLine.hpp
 	include/CLibUtilsQTR/utils.hpp
 	include/CLibUtilsQTR/Animations.hpp
 	include/CLibUtilsQTR/BoundingBox.hpp

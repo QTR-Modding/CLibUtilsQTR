@@ -51,9 +51,10 @@ A vcpkg feature selects external dependencies. All headers are installed regardl
 | `skyrim` | Logging, forms, TXT groups, animation, geometry, drawing, Papyrus, serialization | `clib-util`, `spdlog` |
 | `hooks` | Prologue hooks | Detours |
 | `json` | JSON fields | RapidJSON |
+| `signing` | DLL signing and verified provider binding | Windows x64 Crypt32; no packages |
 | `yaml-skyrim` | YAML form lists | `skyrim`, yaml-cpp |
 
-With `default-features` false, omit `features` for the base package alone. The plain dependency `"clib-utils-qtr"` enables all optional features. The umbrella header `ClibUtilsQTR/utils.hpp` includes the full library and needs all of them.
+With `default-features` false, omit `features` for the base package alone. The plain dependency `"clib-utils-qtr"` enables the existing Skyrim, hooks, JSON and YAML features. Signing is opt-in. The umbrella header `ClibUtilsQTR/utils.hpp` covers the existing helpers; include `CLibUtilsQTR/Signing.hpp` separately for signing.
 
 For Skyrim code, keep your plugin's CommonLibVR-MIT and SKSE setup. The `skyrim` feature does not create a plugin target or initialize SKSE. Several engine headers expect engine declarations and standard headers from the plugin's PCH. Individual guides identify additional requirements.
 
@@ -71,5 +72,6 @@ For Skyrim code, keep your plugin's CommonLibVR-MIT and SKSE setup. The `skyrim`
 | Animation queues | [Animations](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Animations) | global `Animation`, `Animator` |
 | Bounds and diagnostic shapes | [Geometry and drawing](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Geometry-and-Drawing) | `BoundingBox`, `DebugAPI_IMPL` |
 | Serialization helpers | [Serialization](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Serialization) | `Serialization` |
+| Verified DLL exports | [DLL Signing](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Signing) | `clib_utilsQTR::Signing` |
 
 For authors contributing TXT group files, see the existing [Form Groups guide](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Form-Groups).
