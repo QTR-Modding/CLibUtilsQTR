@@ -61,6 +61,7 @@ For Skyrim code, keep your plugin's CommonLibVR-MIT and SKSE setup. The `skyrim`
 
 | Task | Guide | Names used in code |
 | --- | --- | --- |
+| Dynamic form creation and lifecycle | [Dynamic form tracking](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Dynamic-Form-Tracking) | `clib_utilsQTR` |
 | Rotating logs | [Logging](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Logging) | `clib_utilsQTR` |
 | Form resolution and TXT/YAML groups | [Forms and groups](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Forms-and-Groups) | `FormReader`, `PresetHelpers` |
 | JSON, preset values, strings | [Configuration and strings](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Configuration-and-Strings) | `Presets`, `clib_utilsQTR`, `StringHelpers` |
