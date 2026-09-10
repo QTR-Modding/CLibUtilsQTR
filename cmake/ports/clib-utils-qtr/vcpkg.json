@@ -1,7 +1,7 @@
 {
   "name": "clib-utils-qtr",
   "version-string": "2.3.0",
-  "port-version": 1,
+  "port-version": 2,
   "homepage": "https://github.com/QTR-Modding/CLibUtilsQTR",
   "license": "MIT",
   "default-features": [
@@ -24,9 +24,10 @@
       ]
     },
     "skyrim": {
-      "description": "Skyrim forms, animation, Papyrus, serialization, drawing, and text presets.",
+      "description": "Skyrim forms, animation, logging, Papyrus, serialization, drawing, and text presets.",
       "dependencies": [
-        "clib-util"
+        "clib-util",
+        "spdlog"
       ]
     },
     "yaml-skyrim": {
