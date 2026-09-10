@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.25)
+project(QTRSigningTools LANGUAGES CXX)
+add_executable(qtr_verify_signature verify_signature.cpp)
+target_compile_features(qtr_verify_signature PRIVATE cxx_std_23)
+target_include_directories(qtr_verify_signature PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../include")
+if(MSVC)
+    target_compile_options(qtr_verify_signature PRIVATE /W4 /WX /permissive- /EHsc)
+endif()
