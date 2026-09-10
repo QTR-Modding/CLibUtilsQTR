@@ -1,5 +1,7 @@
 # CLibUtilsQTR
 
+[User guides and examples](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started). Wiki pages are maintained in `docs/wiki` and published when merged into `main`.
+
 ---
 
 ## Installation (via vcpkg)
