@@ -732,10 +732,13 @@ namespace clib_utilsQTR {
                 return 0;
             }
 
+            const auto resolved_id = base_form->GetFormID();
+            const auto resolved_editorid = clib_util::editorID::get_editorID(base_form);
+
             if (customID.has_value()) {
-                const auto new_formid = GetByCustomID(customID.value(), baseFormID, baseEditorID);
+                const auto new_formid = GetByCustomID(customID.value(), resolved_id, resolved_editorid);
                 if (const auto dyn_form = _yield(new_formid, base_form)) return dyn_form->GetFormID();
-            } else if (const auto formset = GetFormSet(baseFormID, baseEditorID); !formset.empty()) {
+            } else if (const auto formset = GetFormSet(resolved_id, resolved_editorid); !formset.empty()) {
                 std::shared_lock lock(customIDforms_mutex);
                 for (const auto dyn_formid : formset) {
                     if (IsActive(dyn_formid)) continue;
@@ -760,13 +763,16 @@ namespace clib_utilsQTR {
                 return 0;
             }
 
+            const auto resolved_id = base_form->GetFormID();
+            const auto resolved_editorid = clib_util::editorID::get_editorID(base_form);
+
             if (customID.has_value()) {
-                const auto new_formid = GetByCustomID(customID.value(), baseFormID, baseEditorID);
+                const auto new_formid = GetByCustomID(customID.value(), resolved_id, resolved_editorid);
                 if (const auto dyn_form = _yield(new_formid, base_form)) return dyn_form->GetFormID();
             }
 
             // before creating new one, try to find one from the bank without custom id
-            if (const auto dyn_form = FormReader::GetFormByID<T>(Fetch(baseFormID, baseEditorID, {}))) {
+            if (const auto dyn_form = FormReader::GetFormByID<T>(Fetch(resolved_id, resolved_editorid, {}))) {
                 const auto new_formid = dyn_form->GetFormID();
                 if (customID.has_value()) EditCustomID(new_formid, customID.value());
                 return new_formid;
