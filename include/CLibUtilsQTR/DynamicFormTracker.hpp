@@ -546,6 +546,7 @@ namespace clib_utilsQTR {
             std::unique_lock lock2(customIDforms_mutex);
             std::unique_lock lock3(active_forms_mutex);
             std::unique_lock lock4(protected_forms_mutex);
+            owned_forms.erase(dynamic_formid);
             forms[base].erase(dynamic_formid);
             customIDforms.erase(dynamic_formid);
             active_forms.erase(dynamic_formid);
