@@ -953,7 +953,7 @@ namespace clib_utilsQTR {
                 for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
                     if (const auto* act_eff = *it; act_eff && act_eff->spell && act_eff->spell->As<RE::AlchemyItem>() &&
                         !act_eff->flags.any(RE::ActiveEffect::Flag::kDispelled)) {
-                        if (const auto act_eff_formid = act_eff->spell->GetFormID(); active_forms.contains(act_eff_formid)) {
+                        if (const auto act_eff_formid = act_eff->spell->GetFormID(); IsActive(act_eff_formid)) {
                             const auto& definitions = act_eff->spell->effects;
                             const auto definition = std::ranges::find(definitions, act_eff->effect);
                             if (definition == definitions.end() || !*definition || !(*definition)->baseEffect) continue;
