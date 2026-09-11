@@ -16,8 +16,60 @@ namespace clib_utilsQTR {
     using DFSaveDataLHS = std::pair<RE::FormID, std::string>;
     using DFSaveDataRHS = std::vector<DFSaveData>;
 
+    struct SavedEffect {
+        RE::FormID dynamic_formid;
+        std::uint32_t index;
+        RE::FormID effect_formid;
+        float elapsed;
+    };
+
     class DFSaveLoadData : public Serialization::BaseData<DFSaveDataLHS, DFSaveDataRHS> {
+    protected:
+        // An absent extension identifies legacy saves with only item-level timing.
+        std::optional<std::vector<SavedEffect>> saved_effects;
+        static constexpr std::uint32_t effects_format = 1;
+
+        bool SaveEffects(SKSE::SerializationInterface* serialization) const {
+            if (!saved_effects) return true;
+            const auto count = saved_effects->size();
+            if (!serialization->WriteRecordData(effects_format) || !serialization->WriteRecordData(count)) return false;
+            for (const auto& effect : *saved_effects) {
+                if (!serialization->WriteRecordData(effect.dynamic_formid) ||
+                    !serialization->WriteRecordData(effect.index) ||
+                    !serialization->WriteRecordData(effect.effect_formid) ||
+                    !serialization->WriteRecordData(effect.elapsed)) return false;
+            }
+            return true;
+        }
+
+        bool LoadEffects(SKSE::SerializationInterface* serialization) {
+            std::uint32_t format;
+            const auto bytes = serialization->ReadRecordData(format);
+            if (!bytes) return true; // Older records end after the form bank.
+            if (bytes != sizeof(format) || format != effects_format) return false;
+            std::size_t count;
+            if (serialization->ReadRecordData(count) != sizeof(count)) return false;
+            std::vector<SavedEffect> effects;
+            for (std::size_t i = 0; i < count; ++i) {
+                SavedEffect effect;
+                if (serialization->ReadRecordData(effect.dynamic_formid) != sizeof(effect.dynamic_formid) ||
+                    serialization->ReadRecordData(effect.index) != sizeof(effect.index) ||
+                    serialization->ReadRecordData(effect.effect_formid) != sizeof(effect.effect_formid) ||
+                    serialization->ReadRecordData(effect.elapsed) != sizeof(effect.elapsed)) return false;
+                if (!serialization->ResolveFormID(effect.effect_formid, effect.effect_formid)) continue;
+                effects.push_back(effect);
+            }
+            saved_effects = std::move(effects);
+            return true;
+        }
+
     public:
+        void Clear() {
+            Locker locker(m_Lock);
+            m_Data.clear();
+            saved_effects.reset();
+        }
+
         [[nodiscard]] bool Save(SKSE::SerializationInterface* serializationInterface) override;
 
         [[nodiscard]] bool Save(SKSE::SerializationInterface* serializationInterface, std::uint32_t type,
@@ -63,7 +115,7 @@ namespace clib_utilsQTR {
                 }
             }
         }
-        return true;
+        return SaveEffects(serializationInterface);
     }
 
     inline bool DFSaveLoadData::Save(SKSE::SerializationInterface* serializationInterface, const std::uint32_t type,
@@ -81,6 +133,7 @@ namespace clib_utilsQTR {
 
         Locker locker(m_Lock);
         m_Data.clear();
+        saved_effects.reset();
 
         std::size_t recordDataSize;
         if (serializationInterface->ReadRecordData(recordDataSize) != sizeof(recordDataSize)) return false;
@@ -115,7 +168,7 @@ namespace clib_utilsQTR {
             m_Data[{formid, editorid}] = std::move(rhs);
         }
 
-        return true;
+        return LoadEffects(serializationInterface);
     }
 
     struct ActEff {
@@ -123,6 +176,7 @@ namespace clib_utilsQTR {
         RE::FormID dynamicFormid;
         float elapsed;
         std::pair<bool, uint32_t> custom_id;
+        std::optional<SavedEffect> effect;
     };
 
     /// Owns a per-plugin bank of dynamic forms. Call engine-facing operations on
@@ -566,9 +620,11 @@ namespace clib_utilsQTR {
             return true;
         }
 
-        static void RestoreMissingEffects(RE::Actor* player, RE::MagicItem* item, const float elapsed) {
+        static void RestoreEffect(RE::Actor* player, RE::MagicItem* item, RE::Effect* definition,
+                                  const float elapsed) {
+            if (!definition || !definition->baseEffect || !std::isfinite(elapsed) || elapsed < 0.f) return;
             const auto target = player->AsMagicTarget();
-            const auto find_effect = [target, item](const RE::Effect* definition) -> RE::ActiveEffect* {
+            const auto find_effect = [target, item, definition]() -> RE::ActiveEffect* {
                 if (const auto list = target->GetActiveEffectList()) {
                     for (const auto effect : *list) {
                         if (effect && effect->spell == item && effect->effect == definition &&
@@ -577,31 +633,26 @@ namespace clib_utilsQTR {
                 }
                 return nullptr;
             };
-            for (const auto definition : item->effects) {
-                if (!definition || !definition->baseEffect) continue;
-                if (const auto existing = find_effect(definition)) {
-                    SKSE::log::trace("Keeping effect {:08X} of form {:08X}: elapsed {}s, duration {}s.",
-                                     definition->baseEffect->GetFormID(), item->GetFormID(),
-                                     existing->elapsedSeconds, existing->duration);
-                    continue;
-                }
-                RE::MagicTarget::AddTargetData data{};
-                data.caster = player;
-                data.magicItem = item;
-                data.effect = definition;
-                data.magnitude = definition->GetMagnitude();
-                data.power = 1.0f;
-                data.castingSource = RE::MagicSystem::CastingSource::kInstant;
-                const bool added = target->AddTarget(data);
-                if (const auto restored = find_effect(definition)) {
-                    restored->elapsedSeconds = restored->duration > elapsed ? elapsed : restored->duration - 1;
-                    SKSE::log::trace("Restored effect {:08X} of form {:08X}: elapsed {}s, duration {}s.",
-                                     definition->baseEffect->GetFormID(), item->GetFormID(),
-                                     restored->elapsedSeconds, restored->duration);
-                } else {
-                    SKSE::log::trace("Effect {:08X} of form {:08X}: AddTarget returned {}, no persistent effect found.",
-                                     definition->baseEffect->GetFormID(), item->GetFormID(), added);
-                }
+            if (find_effect()) {
+                SKSE::log::trace("Keeping effect {:08X} of form {:08X}.",
+                                 definition->baseEffect->GetFormID(), item->GetFormID());
+                return;
+            }
+            RE::MagicTarget::AddTargetData data{};
+            data.caster = player;
+            data.magicItem = item;
+            data.effect = definition;
+            data.magnitude = definition->GetMagnitude();
+            data.power = 1.0f;
+            data.castingSource = RE::MagicSystem::CastingSource::kInstant;
+            const bool added = target->AddTarget(data);
+            if (const auto restored = find_effect()) {
+                restored->elapsedSeconds = elapsed;
+                SKSE::log::trace("Restored effect {:08X} of form {:08X}: elapsed {}s, duration {}s.",
+                                 definition->baseEffect->GetFormID(), item->GetFormID(), elapsed, restored->duration);
+            } else {
+                SKSE::log::trace("Effect {:08X} of form {:08X}: AddTarget returned {}, no persistent effect found.",
+                                 definition->baseEffect->GetFormID(), item->GetFormID(), added);
             }
         }
 
@@ -688,7 +739,7 @@ namespace clib_utilsQTR {
             }
             lock.unlock();
             std::shared_lock lock2(act_effs_mutex);
-            for (const auto& [base_formid, dynamicFormid, elapsed, custom_id] : act_effs) {
+            for (const auto& [base_formid, dynamicFormid, elapsed, custom_id, effect] : act_effs) {
                 const auto base_form = FormReader::GetFormByID(base_formid);
                 if (!base_form) {
                     SKSE::log::error("Failed to get base form.");
@@ -852,6 +903,7 @@ namespace clib_utilsQTR {
         void SendData() {
             SKSE::log::info("--------Sending data (DFT) ---------");
             Clear();
+            saved_effects.emplace();
 
             {
                 std::unique_lock lock(act_effs_mutex);
@@ -861,16 +913,19 @@ namespace clib_utilsQTR {
             const auto act_eff_list = RE::PlayerCharacter::GetSingleton()->AsMagicTarget()->GetActiveEffectList();
 
             int n_act_effs = 0;
-            std::unordered_set<RE::FormID> act_effs_temp;
             if (act_eff_list) {
                 for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
                     if (const auto* act_eff = *it; act_eff && act_eff->spell &&
                         !act_eff->flags.any(RE::ActiveEffect::Flag::kDispelled)) {
                         if (const auto act_eff_formid = act_eff->spell->GetFormID(); active_forms.contains(act_eff_formid)) {
-                            if (act_effs_temp.contains(act_eff_formid))
-                                SKSE::log::warn(
-                                    "Active effect already exists in act effs.");
-                            else n_act_effs++;
+                            const auto& definitions = act_eff->spell->effects;
+                            const auto definition = std::ranges::find(definitions, act_eff->effect);
+                            if (definition == definitions.end() || !*definition || !(*definition)->baseEffect) continue;
+                            if (!std::isfinite(act_eff->elapsedSeconds) || act_eff->elapsedSeconds < 0.f ||
+                                (act_eff->duration > 0.f && act_eff->elapsedSeconds >= act_eff->duration)) continue;
+                            const SavedEffect saved{act_eff_formid,
+                                static_cast<std::uint32_t>(std::distance(definitions.begin(), definition)),
+                                (*definition)->baseEffect->GetFormID(), act_eff->elapsedSeconds};
                             const auto base_form = GetOGFormOfDynamic(act_eff_formid);
                             if (!base_form) continue;
                             std::shared_lock lock(customIDforms_mutex);
@@ -881,8 +936,12 @@ namespace clib_utilsQTR {
                             act_effs.push_back({.baseFormid = base_form->GetFormID(),
                                                 .dynamicFormid = act_eff_formid,
                                                 .elapsed = act_eff->elapsedSeconds,
-                                                .custom_id = {false, customid_temp}});
-                            act_effs_temp.insert(act_eff_formid);
+                                                .custom_id = {customIDforms.contains(act_eff_formid), customid_temp},
+                                                .effect = saved});
+                            saved_effects->push_back(saved);
+                            ++n_act_effs;
+                            SKSE::log::trace("Saving effect {:08X}, index {}, of form {:08X}: elapsed {}s.",
+                                             saved.effect_formid, saved.index, saved.dynamic_formid, saved.elapsed);
                         }
                     }
                 }
@@ -930,12 +989,17 @@ namespace clib_utilsQTR {
                 base_formid = temp_form->GetFormID();
                 for (const auto& [dyn_formid, custom_id, act_eff_elpsd] : rhs) {
                     const auto [has_customid, customid] = custom_id;
-                    if (act_eff_elpsd >= 0.f) {
+                    if (saved_effects) {
                         std::unique_lock lock(act_effs_mutex);
-                        act_effs.push_back({.baseFormid = base_formid, .dynamicFormid = dyn_formid,
-                                            .elapsed = act_eff_elpsd, .custom_id =
-                                            {has_customid, customid}});
-                        n_act_effs++;
+                        for (const auto& effect : *saved_effects) {
+                            if (effect.dynamic_formid != dyn_formid) continue;
+                            act_effs.push_back({base_formid, dyn_formid, effect.elapsed, custom_id, effect});
+                            ++n_act_effs;
+                        }
+                    } else if (act_eff_elpsd >= 0.f) {
+                        std::unique_lock lock(act_effs_mutex);
+                        act_effs.push_back({base_formid, dyn_formid, act_eff_elpsd, custom_id, std::nullopt});
+                        ++n_act_effs;
                     }
                     if (const auto dyn_form = RE::TESForm::LookupByID(dyn_formid); !dyn_form) {
                         SKSE::log::trace("Dynamic form {:x} does not exist.", dyn_formid);
@@ -1024,10 +1088,13 @@ namespace clib_utilsQTR {
         }
 
         void ApplyMissingActiveEffects() {
-            std::unordered_map<RE::FormID, float> new_act_effs; // terrible name
-            // I need to change the formids in act_effs if they are not valid to valid ones
-            for (std::shared_lock lock(act_effs_mutex);
-                 auto& [baseFormid, dynamicFormid, elapsed, customid] : act_effs) {
+            std::vector<ActEff> pending;
+            {
+                std::unique_lock lock(act_effs_mutex);
+                pending.swap(act_effs);
+            }
+            const auto player = RE::PlayerCharacter::GetSingleton();
+            for (const auto& [baseFormid, dynamicFormid, elapsed, customid, effect] : pending) {
                 if (elapsed < 0.f) {
                     SKSE::log::error("Elapsed time is negative. Removing from act effs.");
                     continue;
@@ -1049,19 +1116,25 @@ namespace clib_utilsQTR {
                                      dyn_formid);
                     continue;
                 }
-                new_act_effs[dyn_formid] = elapsed;
-            }
-            {
-                std::unique_lock lock(act_effs_mutex);
-                act_effs.clear();
-            }
-            if (new_act_effs.empty()) return;
-
-            const auto player = RE::PlayerCharacter::GetSingleton();
-            for (const auto& [formid, elapsed] : new_act_effs) {
-                const auto item = FormReader::GetFormByID<RE::MagicItem>(formid);
+                const auto item = form->As<RE::MagicItem>();
                 if (!item) continue;
-                RestoreMissingEffects(player, item, elapsed);
+                if (effect) {
+                    if (effect->index >= item->effects.size()) continue;
+                    const auto definition = item->effects[effect->index];
+                    if (!definition || !definition->baseEffect ||
+                        definition->baseEffect->GetFormID() != effect->effect_formid) {
+                        SKSE::log::warn("Saved effect definition changed for form {:08X}, index {}.",
+                                        dyn_formid, effect->index);
+                        continue;
+                    }
+                    RestoreEffect(player, item, definition, elapsed);
+                } else {
+                    // Older records have no definition list; preserve best-effort restoration.
+                    for (const auto definition : item->effects) {
+                        if (!definition || (definition->GetDuration() > 0 && elapsed >= definition->GetDuration())) continue;
+                        RestoreEffect(player, item, definition, elapsed);
+                    }
+                }
             }
         }
     };
