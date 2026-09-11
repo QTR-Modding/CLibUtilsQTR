@@ -1023,7 +1023,14 @@ namespace clib_utilsQTR {
                     if (const auto* act_eff = *it) {
                         if (const auto mg_item = act_eff->spell) {
                             const auto mg_item_formid = mg_item->GetFormID();
-                            if (new_act_effs.contains(mg_item_formid)) new_act_effs.erase(mg_item_formid);
+                            if (new_act_effs.contains(mg_item_formid)) {
+                                SKSE::log::trace("Skipping recast of {:08X}: existing effect {}, elapsed {}s, duration {}s, inactive {}, dispelled {}.",
+                                                 mg_item_formid, static_cast<const void*>(act_eff),
+                                                 act_eff->elapsedSeconds, act_eff->duration,
+                                                 act_eff->flags.any(RE::ActiveEffect::Flag::kInactive),
+                                                 act_eff->flags.any(RE::ActiveEffect::Flag::kDispelled));
+                                new_act_effs.erase(mg_item_formid);
+                            }
                         }
                     }
                 }
@@ -1040,6 +1047,8 @@ namespace clib_utilsQTR {
                     SKSE::log::error("Failed to get item by formid.");
                     continue;
                 }
+                SKSE::log::trace("Recasting saved form {:08X}: {} effect definitions, saved elapsed {}s.",
+                                 item_formid, item->effects.size(), new_act_effs.at(item_formid));
                 mg_caster->CastSpellImmediate(item, false, plyr, 1.0f, false, 0.0f, nullptr);
             }
 
