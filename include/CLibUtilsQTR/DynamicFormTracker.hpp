@@ -1023,7 +1023,8 @@ namespace clib_utilsQTR {
                     if (const auto* act_eff = *it) {
                         if (const auto mg_item = act_eff->spell) {
                             const auto mg_item_formid = mg_item->GetFormID();
-                            if (new_act_effs.contains(mg_item_formid)) {
+                            if (new_act_effs.contains(mg_item_formid) && act_eff->effect &&
+                                std::ranges::contains(mg_item->effects, act_eff->effect)) {
                                 SKSE::log::trace("Skipping recast of {:08X}: existing effect {}, elapsed {}s, duration {}s, inactive {}, dispelled {}.",
                                                  mg_item_formid, static_cast<const void*>(act_eff),
                                                  act_eff->elapsedSeconds, act_eff->duration,
@@ -1059,7 +1060,8 @@ namespace clib_utilsQTR {
                     if (auto* act_eff = *it) {
                         if (const auto mg_item = act_eff->spell) {
                             const auto mg_item_formid = mg_item->GetFormID();
-                            if (new_act_effs.contains(mg_item_formid)) {
+                            if (new_act_effs.contains(mg_item_formid) && act_eff->effect &&
+                                std::ranges::contains(mg_item->effects, act_eff->effect)) {
                                 if (act_eff->duration > new_act_effs[mg_item_formid]) {
                                     act_eff->elapsedSeconds = new_act_effs[mg_item_formid];
                                 } else {
