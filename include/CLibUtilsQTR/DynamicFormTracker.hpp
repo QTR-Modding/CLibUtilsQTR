@@ -179,7 +179,8 @@ namespace clib_utilsQTR {
         std::optional<SavedEffect> effect;
     };
 
-    /// Owns a per-plugin bank of dynamic forms. Call engine-facing operations on
+    /// Owns a per-plugin bank of dynamic object forms (TESBoundObject), not spells.
+    /// Player active-effect persistence is limited to AlchemyItem derivatives. Call engine-facing operations on
     /// the game thread; the internal locks do not make arbitrary engine calls safe.
     ///
     /// Resolve a base form, then fetch/create a derivative with a stable caller-defined ID:
@@ -387,8 +388,8 @@ namespace clib_utilsQTR {
         RE::FormID Create(T* baseForm, const RE::FormID setFormID = 0) {
             if (block_create) return 0;
 
-            if (!baseForm) {
-                SKSE::log::error("Real form is null for baseForm.");
+            if (!baseForm || !baseForm->template As<RE::TESBoundObject>()) {
+                SKSE::log::error("DFT requires an object base form.");
                 return 0;
             }
 
@@ -555,6 +556,7 @@ namespace clib_utilsQTR {
         }
 
         [[nodiscard]] bool CanUseForm(const RE::TESForm* underlying, const RE::TESForm* derivative) {
+            if (!underlying->As<RE::TESBoundObject>() || !derivative->As<RE::TESBoundObject>()) return false;
             if (std::strlen(derivative->GetName()) != 0 && !OwnsForm(derivative)) {
                 SKSE::log::trace("Rejecting named form {:08X}: not owned by this DFT session.",
                                  derivative->GetFormID());
@@ -624,7 +626,7 @@ namespace clib_utilsQTR {
             return true;
         }
 
-        static bool RestoreEffect(RE::Actor* player, RE::MagicItem* item, RE::Effect* definition,
+        static bool RestoreEffect(RE::Actor* player, RE::AlchemyItem* item, RE::Effect* definition,
                                   const float elapsed) {
             if (!definition || !definition->baseEffect || !std::isfinite(elapsed) || elapsed < 0.f) return false;
             const auto target = player->AsMagicTarget();
@@ -921,7 +923,7 @@ namespace clib_utilsQTR {
             int n_act_effs = 0;
             if (act_eff_list) {
                 for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
-                    if (const auto* act_eff = *it; act_eff && act_eff->spell &&
+                    if (const auto* act_eff = *it; act_eff && act_eff->spell && act_eff->spell->As<RE::AlchemyItem>() &&
                         !act_eff->flags.any(RE::ActiveEffect::Flag::kDispelled)) {
                         if (const auto act_eff_formid = act_eff->spell->GetFormID(); active_forms.contains(act_eff_formid)) {
                             const auto& definitions = act_eff->spell->effects;
@@ -988,7 +990,7 @@ namespace clib_utilsQTR {
                 auto base_formid = lhs.first;
                 const auto& base_editorid = lhs.second;
                 const auto temp_form = FormReader::GetFormByID(base_formid, base_editorid);
-                if (!temp_form) {
+                if (!temp_form || !temp_form->As<RE::TESBoundObject>()) {
                     SKSE::log::critical("Failed to get base form {:08X} ({}).", base_formid, base_editorid);
                     continue;
                 }
@@ -996,14 +998,14 @@ namespace clib_utilsQTR {
                 const std::pair base{base_formid, clib_util::editorID::get_editorID(temp_form)};
                 for (const auto& [dyn_formid, custom_id, act_eff_elpsd] : rhs) {
                     const auto [has_customid, customid] = custom_id;
-                    if (saved_effects) {
+                    if (temp_form->As<RE::AlchemyItem>() && saved_effects) {
                         std::unique_lock lock(act_effs_mutex);
                         for (const auto& effect : *saved_effects) {
                             if (effect.dynamic_formid != dyn_formid) continue;
                             act_effs.push_back({base_formid, dyn_formid, effect.elapsed, custom_id, effect});
                             ++n_act_effs;
                         }
-                    } else if (act_eff_elpsd >= 0.f) {
+                    } else if (temp_form->As<RE::AlchemyItem>() && !saved_effects && act_eff_elpsd >= 0.f) {
                         std::unique_lock lock(act_effs_mutex);
                         act_effs.push_back({base_formid, dyn_formid, act_eff_elpsd, custom_id, std::nullopt});
                         ++n_act_effs;
@@ -1097,7 +1099,7 @@ namespace clib_utilsQTR {
         /// Returns false without changing records if no match exists or validation fails.
         [[nodiscard]] bool RemapPendingActiveEffects(const RE::FormID saved_formid,
                                                      const RE::FormID replacement_formid) {
-            const auto replacement = FormReader::GetFormByID<RE::MagicItem>(replacement_formid);
+            const auto replacement = FormReader::GetFormByID<RE::AlchemyItem>(replacement_formid);
             if (!replacement || !OwnsForm(replacement)) return false;
             std::unique_lock lock(act_effs_mutex);
             bool found = false;
@@ -1133,7 +1135,7 @@ namespace clib_utilsQTR {
                 }
             }
             if (!base_formid) return 0;
-            const auto replacement = FetchCreate<RE::MagicItem>(base_formid, "", std::nullopt);
+            const auto replacement = FetchCreate<RE::AlchemyItem>(base_formid, "", std::nullopt);
             if (!replacement) return 0;
             if (!RemapPendingActiveEffects(saved_formid, replacement)) {
                 SetInactive(replacement);
@@ -1155,7 +1157,7 @@ namespace clib_utilsQTR {
                     continue;
                 }
                 const auto& [has_cstmid, custom_id] = customid;
-                const auto base_mg_item = FormReader::GetFormByID(baseFormid);
+                const auto base_mg_item = FormReader::GetFormByID<RE::AlchemyItem>(baseFormid);
                 if (!base_mg_item) {
                     SKSE::log::error("Failed to get base form.");
                     continue;
@@ -1171,7 +1173,7 @@ namespace clib_utilsQTR {
                                      dyn_formid);
                     continue;
                 }
-                const auto item = form->As<RE::MagicItem>();
+                const auto item = form->As<RE::AlchemyItem>();
                 if (!item) continue;
                 if (effect) {
                     if (effect->index >= item->effects.size()) continue;

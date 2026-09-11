@@ -1,6 +1,6 @@
 # Dynamic form tracking
 
-Create or retrieve a runtime copy of an existing form:
+Create or retrieve a runtime copy of an existing item:
 
 ```cpp
 #include <CLibUtilsQTR/DynamicFormTracker.hpp>
@@ -16,6 +16,8 @@ RE::FormID GetStaleFood(RE::AlchemyItem* base) {
 ```
 
 Here `base` is an already-resolved food form. The result is a dynamic FormID, or `0` on failure. This creates or retrieves the form; it does not put an item in an inventory, rename it, or make it evolve. Apply your plugin's properties to the returned form before using it.
+
+DFT is for dynamic items. Creation and adoption require `RE::TESBoundObject` forms; spells and other non-object records are outside its scope. Player active-effect saving and restoration handle only `RE::AlchemyItem` derivatives.
 
 A **dynamic form** is a runtime-created record. The **base form** is the record it was copied from. DFT keeps a **bank** of these copies for each base so they can be reused.
 
