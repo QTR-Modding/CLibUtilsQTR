@@ -275,16 +275,6 @@ namespace clib_utilsQTR {
             return -1.f;
         }
 
-        [[nodiscard]] bool IsTracked(const RE::FormID dynamic_formid) {
-            std::shared_lock lock(forms_mutex);
-            for (const auto& dyn_formset : forms | std::views::values) {
-                if (dyn_formset.contains(dynamic_formid)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         void ReviveDynamicForm(RE::TESForm* fake, RE::TESForm* base, const RE::FormID setFormID = 0) {
             fake->Copy(base);
             const auto weaponBaseForm = base->As<RE::TESObjectWEAP>();
@@ -803,9 +793,21 @@ namespace clib_utilsQTR {
         }
 
         void EditCustomID(const RE::FormID dynamic_formid, const uint32_t custom_id) {
-            std::unique_lock lock(customIDforms_mutex);
-            if (customIDforms.contains(dynamic_formid)) customIDforms[dynamic_formid] = custom_id;
-            else if (IsTracked(dynamic_formid)) customIDforms.insert({dynamic_formid, custom_id});
+            std::scoped_lock lock(forms_mutex, customIDforms_mutex);
+            for (const auto& formset : forms | std::views::values) {
+                if (!formset.contains(dynamic_formid)) continue;
+                for (const auto other_formid : formset) {
+                    if (other_formid == dynamic_formid) continue;
+                    if (const auto it = customIDforms.find(other_formid);
+                        it != customIDforms.end() && it->second == custom_id) {
+                        SKSE::log::warn("Cannot assign custom ID {} to {:08X}: already assigned to {:08X} in the same base bank.",
+                                        custom_id, dynamic_formid, other_formid);
+                        return;
+                    }
+                }
+                customIDforms.insert_or_assign(dynamic_formid, custom_id);
+                return;
+            }
         }
 
         /// With a custom ID, return only its assigned form; return 0 if absent.

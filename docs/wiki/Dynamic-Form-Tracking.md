@@ -37,6 +37,8 @@ A **custom ID** is a number your plugin assigns to distinguish copies of the sam
 
 Requesting raw beef with ID `1` again returns that assignment when available. Bread can also use `1`: the assignment is scoped to its base. Keep the meaning stable across saves and plugin versions. Two features requesting the same base and custom ID share a form, so its properties affect both.
 
+`EditCustomID(dynamicFormID, customID)` rejects an ID already assigned to another derivative in the same base bank. It leaves both assignments unchanged and logs a warning. Untracked forms are ignored.
+
 Use `std::nullopt` when you do not need a named assignment. Custom ID `0` is a valid assignment; it does not mean no ID. Repeated requests without an ID do not identify an already-active copy.
 
 ## Fetch versus create
