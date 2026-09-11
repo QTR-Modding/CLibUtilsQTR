@@ -993,6 +993,7 @@ namespace clib_utilsQTR {
                     continue;
                 }
                 base_formid = temp_form->GetFormID();
+                const std::pair base{base_formid, clib_util::editorID::get_editorID(temp_form)};
                 for (const auto& [dyn_formid, custom_id, act_eff_elpsd] : rhs) {
                     const auto [has_customid, customid] = custom_id;
                     if (saved_effects) {
@@ -1028,7 +1029,6 @@ namespace clib_utilsQTR {
 
                     {
                         std::unique_lock lock(forms_mutex);
-                        const std::pair base{base_formid, base_editorid};
                         // This save owns the ID; remove associations retained from the previous save.
                         for (auto& [previous_base, formset] : forms) {
                             if (previous_base != base) formset.erase(dyn_formid);
