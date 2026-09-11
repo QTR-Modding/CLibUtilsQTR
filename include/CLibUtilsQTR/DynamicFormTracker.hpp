@@ -811,23 +811,25 @@ namespace clib_utilsQTR {
 
             int n_act_effs = 0;
             std::unordered_set<RE::FormID> act_effs_temp;
-            for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
-                if (const auto* act_eff = *it; act_eff && act_eff->spell) {
-                    if (const auto act_eff_formid = act_eff->spell->GetFormID(); active_forms.contains(act_eff_formid)) {
-                        if (act_effs_temp.contains(act_eff_formid))
-                            SKSE::log::warn(
-                                "Active effect already exists in act effs.");
-                        else n_act_effs++;
-                        std::shared_lock lock(customIDforms_mutex);
-                        std::unique_lock lock2(act_effs_mutex);
-                        const uint32_t customid_temp = customIDforms.contains(act_eff_formid)
-                                                           ? customIDforms.at(act_eff_formid)
-                                                           : 0;
-                        act_effs.push_back({.baseFormid = GetOGFormOfDynamic(act_eff_formid)->GetFormID(),
-                                            .dynamicFormid = act_eff_formid,
-                                            .elapsed = act_eff->elapsedSeconds,
-                                            .custom_id = {false, customid_temp}});
-                        act_effs_temp.insert(act_eff_formid);
+            if (act_eff_list) {
+                for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
+                    if (const auto* act_eff = *it; act_eff && act_eff->spell) {
+                        if (const auto act_eff_formid = act_eff->spell->GetFormID(); active_forms.contains(act_eff_formid)) {
+                            if (act_effs_temp.contains(act_eff_formid))
+                                SKSE::log::warn(
+                                    "Active effect already exists in act effs.");
+                            else n_act_effs++;
+                            std::shared_lock lock(customIDforms_mutex);
+                            std::unique_lock lock2(act_effs_mutex);
+                            const uint32_t customid_temp = customIDforms.contains(act_eff_formid)
+                                                               ? customIDforms.at(act_eff_formid)
+                                                               : 0;
+                            act_effs.push_back({.baseFormid = GetOGFormOfDynamic(act_eff_formid)->GetFormID(),
+                                                .dynamicFormid = act_eff_formid,
+                                                .elapsed = act_eff->elapsedSeconds,
+                                                .custom_id = {false, customid_temp}});
+                            act_effs_temp.insert(act_eff_formid);
+                        }
                     }
                 }
             }
@@ -1001,11 +1003,13 @@ namespace clib_utilsQTR {
                 return;
             }
             auto act_eff_list = mg_target->GetActiveEffectList();
-            for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
-                if (const auto* act_eff = *it) {
-                    if (const auto mg_item = act_eff->spell) {
-                        const auto mg_item_formid = mg_item->GetFormID();
-                        if (new_act_effs.contains(mg_item_formid)) new_act_effs.erase(mg_item_formid);
+            if (act_eff_list) {
+                for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
+                    if (const auto* act_eff = *it) {
+                        if (const auto mg_item = act_eff->spell) {
+                            const auto mg_item_formid = mg_item->GetFormID();
+                            if (new_act_effs.contains(mg_item_formid)) new_act_effs.erase(mg_item_formid);
+                        }
                     }
                 }
             }
@@ -1026,17 +1030,19 @@ namespace clib_utilsQTR {
 
             // now i need to go to act eff list and adjust the elapsed time
             act_eff_list = mg_target->GetActiveEffectList();
-            for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
-                if (auto* act_eff = *it) {
-                    if (const auto mg_item = act_eff->spell) {
-                        const auto mg_item_formid = mg_item->GetFormID();
-                        if (new_act_effs.contains(mg_item_formid)) {
-                            if (act_eff->duration > new_act_effs[mg_item_formid]) {
-                                act_eff->elapsedSeconds = new_act_effs[mg_item_formid];
-                            } else {
-                                act_eff->elapsedSeconds = act_eff->duration - 1;
+            if (act_eff_list) {
+                for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
+                    if (auto* act_eff = *it) {
+                        if (const auto mg_item = act_eff->spell) {
+                            const auto mg_item_formid = mg_item->GetFormID();
+                            if (new_act_effs.contains(mg_item_formid)) {
+                                if (act_eff->duration > new_act_effs[mg_item_formid]) {
+                                    act_eff->elapsedSeconds = new_act_effs[mg_item_formid];
+                                } else {
+                                    act_eff->elapsedSeconds = act_eff->duration - 1;
+                                }
+                                new_act_effs.erase(mg_item_formid);
                             }
-                            new_act_effs.erase(mg_item_formid);
                         }
                     }
                 }
