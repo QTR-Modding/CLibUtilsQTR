@@ -1050,7 +1050,6 @@ namespace clib_utilsQTR {
                                 } else {
                                     act_eff->elapsedSeconds = act_eff->duration - 1;
                                 }
-                                new_act_effs.erase(mg_item_formid);
                             }
                         }
                     }
