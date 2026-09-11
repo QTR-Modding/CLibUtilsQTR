@@ -4,7 +4,6 @@ The existing string helpers read and write a paired binary representation inside
 
 ```cpp
 #include <SKSE/SKSE.h>
-namespace logger = SKSE::log;
 #include <CLibUtilsQTR/Serialization.hpp>
 
 bool WriteLabel(SKSE::SerializationInterface* serialization) {
@@ -19,7 +18,7 @@ bool ReadLabel(SKSE::SerializationInterface* serialization,
 }
 ```
 
-Use `skyrim`. Currently, the complete SKSE interface and a `logger` namespace alias must be available before including this header. Reuse existing PCH definitions instead of declaring them twice.
+Use `skyrim`. The header includes the SKSE interface and uses `SKSE::log` directly; no caller-defined logger alias is needed. For runtime form creation and its save/load lifecycle, see [Dynamic form tracking](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Dynamic-Form-Tracking).
 
 The plugin owns its callbacks, record type, version, and error handling. These helpers neither open records nor register callbacks. Check boolean returns before using results.
 

@@ -1,10 +1,7 @@
 #pragma once
+#include <SKSE/SKSE.h>
 #include <map>
 #include <mutex>
-
-namespace SKSE {
-    class SerializationInterface;
-}
 
 namespace Serialization {
     // Credits: https:// github.com/ozooma10/OSLAroused/blob/29ac62f220fadc63c829f6933e04be429d4f96b0/src/PersistedData.cpp
@@ -59,7 +56,7 @@ namespace Serialization {
                 }
             }
         } catch (const std::exception& e) {
-            logger::error("Error encoding string: {}", e.what());
+            SKSE::log::error("Error encoding string: {}", e.what());
             return encodeString("ERROR");
         }
         return encodedValues;
@@ -83,12 +80,12 @@ namespace Serialization {
     inline bool read_string(SKSE::SerializationInterface* a_intfc, std::string& a_str) {
         std::vector<std::pair<int, bool>> encodedStr;
         std::size_t size;
-        if (!a_intfc->ReadRecordData(size)) {
+        if (a_intfc->ReadRecordData(size) != sizeof(size)) {
             return false;
         }
         for (std::size_t i = 0; i < size; i++) {
             std::pair<int, bool> temp_pair;
-            if (!a_intfc->ReadRecordData(temp_pair)) {
+            if (a_intfc->ReadRecordData(temp_pair) != sizeof(temp_pair)) {
                 return false;
             }
             encodedStr.push_back(temp_pair);

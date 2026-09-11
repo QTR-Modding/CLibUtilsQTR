@@ -4,6 +4,7 @@
 #include "BoundingBox.hpp"
 #include "DrawDebug.hpp"
 #include "DebugLocks.hpp"
+#include "DynamicFormTracker.hpp"
 #include "FormReader.hpp"
 #include "Hooks.hpp"
 #include "Logging.hpp"
