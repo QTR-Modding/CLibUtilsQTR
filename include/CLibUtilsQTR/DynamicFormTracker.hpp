@@ -1093,6 +1093,33 @@ namespace clib_utilsQTR {
             return act_effs;
         }
 
+        /// Bind pending effects without a custom ID to an owned replacement of the same base.
+        /// Returns false without changing records if no match exists or validation fails.
+        [[nodiscard]] bool RemapPendingActiveEffects(const RE::FormID saved_formid,
+                                                     const RE::FormID replacement_formid) {
+            const auto replacement = FormReader::GetFormByID<RE::MagicItem>(replacement_formid);
+            if (!replacement || !OwnsForm(replacement)) return false;
+            std::unique_lock lock(act_effs_mutex);
+            bool found = false;
+            for (const auto& pending : act_effs) {
+                if (pending.dynamicFormid != saved_formid) continue;
+                if (pending.custom_id.first) return false;
+                const auto base = FormReader::GetFormByID(pending.baseFormid);
+                if (!base || !GetFormSet(base->GetFormID()).contains(replacement_formid) ||
+                    !CanUseForm(base, replacement)) return false;
+                found = true;
+            }
+            if (!found) return false;
+            for (auto& pending : act_effs) {
+                if (pending.dynamicFormid != saved_formid) continue;
+                pending.dynamicFormid = replacement_formid;
+                if (pending.effect) pending.effect->dynamic_formid = replacement_formid;
+            }
+            SKSE::log::trace("Remapped pending player effects from {:08X} to {:08X}.",
+                             saved_formid, replacement_formid);
+            return true;
+        }
+
         void ApplyMissingActiveEffects() {
             std::vector<ActEff> pending;
             {
