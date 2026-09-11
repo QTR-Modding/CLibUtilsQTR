@@ -186,7 +186,7 @@ namespace clib_utilsQTR {
                     const auto base_form = RE::TESForm::LookupByID(base.first);
                     const auto newForm = RE::TESForm::LookupByID(*it2);
                     const auto refForm = RE::TESForm::LookupByID<RE::TESObjectREFR>(*it2);
-                    if (!newForm || !CanUseForm(base_form, newForm) || refForm) {
+                    if (!newForm || refForm || (base_form && !CanUseForm(base_form, newForm))) {
                         SKSE::log::trace("Form with ID {:x} does not exist. Removing from formset.", *it2);
                         std::unique_lock lock(forms_mutex);
                         std::unique_lock lock2(customIDforms_mutex);
@@ -440,7 +440,7 @@ namespace clib_utilsQTR {
             const auto newForm = RE::TESForm::LookupByID(dynamic_formid);
             const auto refForm = RE::TESForm::LookupByID<RE::TESObjectREFR>(dynamic_formid);
 
-            if (newForm && CanUseForm(base_form, newForm) && !refForm) {
+            if (newForm && !refForm && (OwnsForm(newForm) || (base_form && CanUseForm(base_form, newForm)))) {
                 if (const auto bound_temp = newForm->As<RE::TESBoundObject>(); bound_temp) {
                     const auto player = RE::PlayerCharacter::GetSingleton();
                     auto player_inventory = player->GetInventory();
@@ -475,6 +475,10 @@ namespace clib_utilsQTR {
                 std::unique_lock lock(deleted_forms_mutex);
                 deleted_forms.insert(dynamic_formid);
             }
+            else if (newForm && !refForm && !base_form) {
+                SKSE::log::warn("Keeping form {:08X}: its base is missing and ownership is unverified.", dynamic_formid);
+                return false;
+            }
             std::unique_lock lock(forms_mutex);
             std::unique_lock lock2(customIDforms_mutex);
             std::unique_lock lock3(active_forms_mutex);
@@ -486,15 +490,17 @@ namespace clib_utilsQTR {
             return true;
         }
 
+        [[nodiscard]] bool OwnsForm(const RE::TESForm* form) {
+            std::shared_lock lock(forms_mutex);
+            const auto it = owned_forms.find(form->GetFormID());
+            return it != owned_forms.end() && it->second == form;
+        }
+
         [[nodiscard]] bool CanUseForm(const RE::TESForm* underlying, const RE::TESForm* derivative) {
-            if (std::strlen(derivative->GetName()) != 0) {
-                std::shared_lock lock(forms_mutex);
-                const auto it = owned_forms.find(derivative->GetFormID());
-                if (it == owned_forms.end() || it->second != derivative) {
-                    SKSE::log::trace("Rejecting named form {:08X}: not owned by this DFT session.",
-                                     derivative->GetFormID());
-                    return false;
-                }
+            if (std::strlen(derivative->GetName()) != 0 && !OwnsForm(derivative)) {
+                SKSE::log::trace("Rejecting named form {:08X}: not owned by this DFT session.",
+                                 derivative->GetFormID());
+                return false;
             }
             if (underlying->GetFormType() != derivative->GetFormType()) {
                 SKSE::log::trace("Form types do not match: {} vs {}, ID: {:x} vs {:x}",
@@ -819,12 +825,14 @@ namespace clib_utilsQTR {
                                 SKSE::log::warn(
                                     "Active effect already exists in act effs.");
                             else n_act_effs++;
+                            const auto base_form = GetOGFormOfDynamic(act_eff_formid);
+                            if (!base_form) continue;
                             std::shared_lock lock(customIDforms_mutex);
                             std::unique_lock lock2(act_effs_mutex);
                             const uint32_t customid_temp = customIDforms.contains(act_eff_formid)
                                                                ? customIDforms.at(act_eff_formid)
                                                                : 0;
-                            act_effs.push_back({.baseFormid = GetOGFormOfDynamic(act_eff_formid)->GetFormID(),
+                            act_effs.push_back({.baseFormid = base_form->GetFormID(),
                                                 .dynamicFormid = act_eff_formid,
                                                 .elapsed = act_eff->elapsedSeconds,
                                                 .custom_id = {false, customid_temp}});
