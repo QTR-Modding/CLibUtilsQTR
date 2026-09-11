@@ -158,6 +158,8 @@ namespace clib_utilsQTR {
 
         // created form bank during the session. Create populates this.
         std::map<std::pair<RE::FormID, std::string>, std::unordered_set<RE::FormID>> forms;
+        // Session ownership survives Reset; saved IDs alone do not establish ownership.
+        std::unordered_map<RE::FormID, const RE::TESForm*> owned_forms; // guarded by forms_mutex
         std::unordered_map<RE::FormID, uint32_t> customIDforms; // Fetch populates this
 
         std::unordered_set<RE::FormID> active_forms; // _yield populates this
@@ -184,7 +186,7 @@ namespace clib_utilsQTR {
                     const auto base_form = RE::TESForm::LookupByID(base.first);
                     const auto newForm = RE::TESForm::LookupByID(*it2);
                     const auto refForm = RE::TESForm::LookupByID<RE::TESObjectREFR>(*it2);
-                    if (!newForm || !underlying_check(base_form, newForm) || refForm) {
+                    if (!newForm || !CanUseForm(base_form, newForm) || refForm) {
                         SKSE::log::trace("Form with ID {:x} does not exist. Removing from formset.", *it2);
                         std::unique_lock lock(forms_mutex);
                         std::unique_lock lock2(customIDforms_mutex);
@@ -221,7 +223,7 @@ namespace clib_utilsQTR {
             return false;
         }
 
-        static void ReviveDynamicForm(RE::TESForm* fake, RE::TESForm* base, const RE::FormID setFormID = 0) {
+        void ReviveDynamicForm(RE::TESForm* fake, RE::TESForm* base, const RE::FormID setFormID = 0) {
             fake->Copy(base);
             const auto weaponBaseForm = base->As<RE::TESObjectWEAP>();
 
@@ -323,6 +325,8 @@ namespace clib_utilsQTR {
             copyComponent<RE::TESRaceForm>(base, fake);
 
             if (setFormID != 0) fake->SetFormID(setFormID, false);
+            std::unique_lock lock(forms_mutex);
+            owned_forms[fake->GetFormID()] = fake;
         }
 
         template <typename T>
@@ -402,7 +406,7 @@ namespace clib_utilsQTR {
         // makes it active
         const RE::TESForm* _yield(const RE::FormID dynamic_formid, RE::TESForm* base_form) {
             if (const auto newForm = RE::TESForm::LookupByID(dynamic_formid)) {
-                if (!underlying_check(base_form, newForm)) {
+                if (!CanUseForm(base_form, newForm)) {
                     SKSE::log::error("Underlying check failed for form with ID {:x}.", dynamic_formid);
                     return nullptr;
                 }
@@ -436,7 +440,7 @@ namespace clib_utilsQTR {
             const auto newForm = RE::TESForm::LookupByID(dynamic_formid);
             const auto refForm = RE::TESForm::LookupByID<RE::TESObjectREFR>(dynamic_formid);
 
-            if (newForm && underlying_check(base_form, newForm) && !refForm) {
+            if (newForm && CanUseForm(base_form, newForm) && !refForm) {
                 if (const auto bound_temp = newForm->As<RE::TESBoundObject>(); bound_temp) {
                     const auto player = RE::PlayerCharacter::GetSingleton();
                     auto player_inventory = player->GetInventory();
@@ -463,6 +467,10 @@ namespace clib_utilsQTR {
                 //    }
                 //}
                 SKSE::log::warn("Deleting form with ID: {:x}", dynamic_formid);
+                {
+                    std::unique_lock lock(forms_mutex);
+                    owned_forms.erase(dynamic_formid);
+                }
                 delete newForm;
                 std::unique_lock lock(deleted_forms_mutex);
                 deleted_forms.insert(dynamic_formid);
@@ -478,7 +486,16 @@ namespace clib_utilsQTR {
             return true;
         }
 
-        [[nodiscard]] static bool underlying_check(const RE::TESForm* underlying, const RE::TESForm* derivative) {
+        [[nodiscard]] bool CanUseForm(const RE::TESForm* underlying, const RE::TESForm* derivative) {
+            if (std::strlen(derivative->GetName()) != 0) {
+                std::shared_lock lock(forms_mutex);
+                const auto it = owned_forms.find(derivative->GetFormID());
+                if (it == owned_forms.end() || it->second != derivative) {
+                    SKSE::log::trace("Rejecting named form {:08X}: not owned by this DFT session.",
+                                     derivative->GetFormID());
+                    return false;
+                }
+            }
             if (underlying->GetFormType() != derivative->GetFormType()) {
                 SKSE::log::trace("Form types do not match: {} vs {}, ID: {:x} vs {:x}",
                               RE::FormTypeToString(underlying->GetFormType()),
@@ -747,7 +764,7 @@ namespace clib_utilsQTR {
                 SKSE::log::warn("Form with ID {:x} not found in forms.", dynamic_formid);
                 return;
             }
-            if (!underlying_check(base_form, form)) {
+            if (!CanUseForm(base_form, form)) {
                 SKSE::log::warn("Underlying check failed for form with ID {:x}.", dynamic_formid);
                 return;
             }
@@ -873,7 +890,7 @@ namespace clib_utilsQTR {
                             SKSE::log::trace("Dynamic form {:x} is a refr with name {}.", dyn_formid, dyn_form->GetName());
                             continue;
                         }
-                        if (!underlying_check(temp_form, dyn_form)) {
+                        if (!CanUseForm(temp_form, dyn_form)) {
                             // bcs load callback happens after the game loads, there is a chance that the game will assign new
                             // stuff to "previously" our dynamic formid especially for stuff like dynamic food which is not
                             // serialized by the game

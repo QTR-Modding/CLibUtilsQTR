@@ -75,6 +75,8 @@ Loading has two parts: reading the record, then restoring engine use of its form
 4. Restore your plugin's own saved uses. Use `Reserve(baseID, editorID, savedDynamicID)` for existing saved forms that must be kept while rebuilding. Fetch/create the required assignments and reapply names, effects, models, or other properties owned by your plugin.
 5. If your plugin uses DFT's player active-effect restoration, call `ApplyMissingActiveEffects()` after the required forms and their properties are ready. It restores missing tracked effects on the player; it is not a general NPC effect-restoration API.
 
+A named form at a saved ID is accepted only if DFT already created or revived that exact live form in this session. Otherwise DFT leaves it untouched; use the ID returned by `FetchCreate()` for the replacement. Empty-named forms still follow the type-checked revival path. The ownership record survives `Reset()` and is removed when DFT deletes the form; it is not serialized.
+
 Run the engine restoration steps at the appropriate load lifecycle point before normal inventory synchronization or other consumers can use the forms. Reading a record does not itself restore inventories or your plugin's item-to-form mappings. Persist those separately.
 
 The serializer retains the existing AoT/Containerize field layout: base identity, dynamic FormID, optional custom ID, and active-effect elapsed value. Arbitrary properties applied by your plugin are not serialized by this record. It uses the existing native binary representation, not a portable interchange format.
