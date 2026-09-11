@@ -986,14 +986,15 @@ namespace clib_utilsQTR {
                     SKSE::log::error("Failed to get base form.");
                     continue;
                 }
-                if (!has_cstmid) {
-                    new_act_effs[dynamicFormid] = elapsed;
-                    continue;
-                }
-                const auto dyn_formid = GetByCustomID(custom_id, baseFormid,
-                                                      clib_util::editorID::get_editorID(base_mg_item));
-                if (!dyn_formid) {
-                    SKSE::log::error("Failed to get form by custom id. Removing from act effs.");
+                const auto editor_id = clib_util::editorID::get_editorID(base_mg_item);
+                const auto dyn_formid = has_cstmid
+                    ? GetByCustomID(custom_id, baseFormid, editor_id)
+                    : dynamicFormid;
+                const auto form = RE::TESForm::LookupByID(dyn_formid);
+                if (!form || !OwnsForm(form) || !GetFormSet(baseFormid, editor_id).contains(dyn_formid) ||
+                    !CanUseForm(base_mg_item, form)) {
+                    SKSE::log::trace("Skipping active-effect restoration for unowned or unrestored form {:08X}.",
+                                     dyn_formid);
                     continue;
                 }
                 new_act_effs[dyn_formid] = elapsed;
