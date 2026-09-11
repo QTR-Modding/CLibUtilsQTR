@@ -1056,6 +1056,8 @@ namespace clib_utilsQTR {
                                 } else {
                                     act_eff->elapsedSeconds = act_eff->duration - 1;
                                 }
+                                SKSE::log::trace("Restored effect for form {:08X}: elapsed {}s, duration {}s.",
+                                                 mg_item_formid, act_eff->elapsedSeconds, act_eff->duration);
                             }
                         }
                     }
