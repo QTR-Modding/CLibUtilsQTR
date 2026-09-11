@@ -13,3 +13,4 @@
 11. [Geometry and Drawing](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Geometry-and-Drawing)
 12. [Serialization](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Serialization)
 13. [Dynamic form tracking](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Dynamic-Form-Tracking)
+14. [DLL Signing](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Signing)

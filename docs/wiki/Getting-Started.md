@@ -47,13 +47,13 @@ A vcpkg feature selects external dependencies. All headers are installed regardl
 
 | Feature | Helpers | Dependencies installed |
 | --- | --- | --- |
-| Base package | Strings, debug locks, Tasker, Ticker, preset values | None |
+| Base package | Strings, debug locks, Tasker, Ticker, preset values, DLL signing | None |
 | `skyrim` | Logging, forms, TXT groups, animation, geometry, drawing, Papyrus, serialization | `clib-util`, `spdlog` |
 | `hooks` | Prologue hooks | Detours |
 | `json` | JSON fields | RapidJSON |
 | `yaml-skyrim` | YAML form lists | `skyrim`, yaml-cpp |
 
-With `default-features` false, omit `features` for the base package alone. The plain dependency `"clib-utils-qtr"` enables all optional features. The umbrella header `ClibUtilsQTR/utils.hpp` includes the full library and needs all of them.
+With `default-features` false, omit `features` for the base package, including signing. The plain dependency `"clib-utils-qtr"` enables the Skyrim, hooks, JSON and YAML features. Include `CLibUtilsQTR/Signing.hpp` for signing (Windows x64 only); it needs no optional feature. The umbrella header `ClibUtilsQTR/utils.hpp` also includes dependency-heavy helpers.
 
 For Skyrim code, keep your plugin's CommonLibVR-MIT and SKSE setup. The `skyrim` feature does not create a plugin target or initialize SKSE. Several engine headers expect engine declarations and standard headers from the plugin's PCH. Individual guides identify additional requirements.
 
@@ -72,5 +72,6 @@ For Skyrim code, keep your plugin's CommonLibVR-MIT and SKSE setup. The `skyrim`
 | Animation queues | [Animations](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Animations) | global `Animation`, `Animator` |
 | Bounds and diagnostic shapes | [Geometry and drawing](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Geometry-and-Drawing) | `BoundingBox`, `DebugAPI_IMPL` |
 | Serialization helpers | [Serialization](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Serialization) | `Serialization` |
+| Verified DLL exports | [DLL Signing](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Signing) | `clib_utilsQTR::Signing` |
 
 For authors contributing TXT group files, see the existing [Form Groups guide](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Form-Groups).
