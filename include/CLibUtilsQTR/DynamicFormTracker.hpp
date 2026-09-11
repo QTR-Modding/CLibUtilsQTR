@@ -216,7 +216,7 @@ namespace clib_utilsQTR {
         std::unordered_map<RE::FormID, const RE::TESForm*> owned_forms; // guarded by forms_mutex
         std::unordered_map<RE::FormID, uint32_t> customIDforms; // Fetch populates this
 
-        std::unordered_set<RE::FormID> active_forms; // _yield populates this
+        std::unordered_set<RE::FormID> active_forms; // MarkActive populates this
         std::unordered_set<RE::FormID> protected_forms;
         std::unordered_set<RE::FormID> deleted_forms;
 
@@ -457,6 +457,17 @@ namespace clib_utilsQTR {
             return result;
         }
 
+        void MarkActive(const RE::FormID dynamic_formid) {
+            if (auto lock = std::unique_lock(active_forms_mutex); active_forms.insert(dynamic_formid).second) {
+                lock.unlock();
+                Unreserve(dynamic_formid);
+                if (auto lock2 = std::shared_lock(active_forms_mutex); active_forms.size() > form_limit) {
+                    SKSE::log::warn("Active dynamic forms limit reached!!!");
+                    block_create = true;
+                }
+            }
+        }
+
         // makes it active
         const RE::TESForm* _yield(const RE::FormID dynamic_formid, RE::TESForm* base_form) {
             if (const auto newForm = RE::TESForm::LookupByID(dynamic_formid)) {
@@ -467,14 +478,7 @@ namespace clib_utilsQTR {
                 if (std::strlen(newForm->GetName()) == 0) {
                     ReviveDynamicForm(newForm, base_form);
                 }
-                if (auto lock = std::unique_lock(active_forms_mutex); active_forms.insert(dynamic_formid).second) {
-                    lock.unlock();
-                    Unreserve(dynamic_formid);
-                    if (auto lock2 = std::shared_lock(active_forms_mutex); active_forms.size() > form_limit) {
-                        SKSE::log::warn("Active dynamic forms limit reached!!!");
-                        block_create = true;
-                    }
-                }
+                MarkActive(dynamic_formid);
 
                 return newForm;
             }
@@ -620,9 +624,9 @@ namespace clib_utilsQTR {
             return true;
         }
 
-        static void RestoreEffect(RE::Actor* player, RE::MagicItem* item, RE::Effect* definition,
+        static bool RestoreEffect(RE::Actor* player, RE::MagicItem* item, RE::Effect* definition,
                                   const float elapsed) {
-            if (!definition || !definition->baseEffect || !std::isfinite(elapsed) || elapsed < 0.f) return;
+            if (!definition || !definition->baseEffect || !std::isfinite(elapsed) || elapsed < 0.f) return false;
             const auto target = player->AsMagicTarget();
             const auto find_effect = [target, item, definition]() -> RE::ActiveEffect* {
                 if (const auto list = target->GetActiveEffectList()) {
@@ -636,7 +640,7 @@ namespace clib_utilsQTR {
             if (find_effect()) {
                 SKSE::log::trace("Keeping effect {:08X} of form {:08X}.",
                                  definition->baseEffect->GetFormID(), item->GetFormID());
-                return;
+                return true;
             }
             RE::MagicTarget::AddTargetData data{};
             data.caster = player;
@@ -650,10 +654,12 @@ namespace clib_utilsQTR {
                 restored->elapsedSeconds = elapsed;
                 SKSE::log::trace("Restored effect {:08X} of form {:08X}: elapsed {}s, duration {}s.",
                                  definition->baseEffect->GetFormID(), item->GetFormID(), elapsed, restored->duration);
+                return true;
             } else {
                 SKSE::log::trace("Effect {:08X} of form {:08X}: AddTarget returned {}, no persistent effect found.",
                                  definition->baseEffect->GetFormID(), item->GetFormID(), added);
             }
+            return false;
         }
 
         void DeleteForms(const bool delete_all) {
@@ -1127,12 +1133,12 @@ namespace clib_utilsQTR {
                                         dyn_formid, effect->index);
                         continue;
                     }
-                    RestoreEffect(player, item, definition, elapsed);
+                    if (RestoreEffect(player, item, definition, elapsed)) MarkActive(dyn_formid);
                 } else {
                     // Older records have no definition list; preserve best-effort restoration.
                     for (const auto definition : item->effects) {
                         if (!definition || (definition->GetDuration() > 0 && elapsed >= definition->GetDuration())) continue;
-                        RestoreEffect(player, item, definition, elapsed);
+                        if (RestoreEffect(player, item, definition, elapsed)) MarkActive(dyn_formid);
                     }
                 }
             }
