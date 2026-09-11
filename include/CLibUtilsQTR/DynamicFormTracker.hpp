@@ -1120,6 +1120,28 @@ namespace clib_utilsQTR {
             return true;
         }
 
+        /// Create/reuse an unassigned replacement and bind the saved derivative's pending effects.
+        /// Call once per saved derivative, then reapply caller-owned properties before applying effects.
+        [[nodiscard]] RE::FormID RecreatePendingEffectForm(const RE::FormID saved_formid) {
+            RE::FormID base_formid = 0;
+            {
+                std::shared_lock lock(act_effs_mutex);
+                for (const auto& pending : act_effs) {
+                    if (pending.dynamicFormid != saved_formid) continue;
+                    if (pending.custom_id.first || (base_formid && base_formid != pending.baseFormid)) return 0;
+                    base_formid = pending.baseFormid;
+                }
+            }
+            if (!base_formid) return 0;
+            const auto replacement = FetchCreate<RE::MagicItem>(base_formid, "", std::nullopt);
+            if (!replacement) return 0;
+            if (!RemapPendingActiveEffects(saved_formid, replacement)) {
+                SetInactive(replacement);
+                return 0;
+            }
+            return replacement;
+        }
+
         void ApplyMissingActiveEffects() {
             std::vector<ActEff> pending;
             {
