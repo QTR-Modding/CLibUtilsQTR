@@ -971,6 +971,12 @@ namespace clib_utilsQTR {
             }
         }
 
+        /// Snapshot of the loaded player effects whose derivative forms must be ready before applying them.
+        [[nodiscard]] std::vector<ActEff> GetPendingActiveEffects() {
+            std::shared_lock lock(act_effs_mutex);
+            return act_effs;
+        }
+
         void ApplyMissingActiveEffects() {
             std::unordered_map<RE::FormID, float> new_act_effs; // terrible name
             // I need to change the formids in act_effs if they are not valid to valid ones
