@@ -566,6 +566,45 @@ namespace clib_utilsQTR {
             return true;
         }
 
+        static void RestoreMissingEffects(RE::Actor* player, RE::MagicItem* item, const float elapsed) {
+            const auto target = player->AsMagicTarget();
+            const auto find_effect = [target, item](const RE::Effect* definition) -> RE::ActiveEffect* {
+                if (const auto list = target->GetActiveEffectList()) {
+                    for (const auto effect : *list) {
+                        if (effect && effect->spell == item && effect->effect == definition &&
+                            !effect->flags.any(RE::ActiveEffect::Flag::kDispelled)) return effect;
+                    }
+                }
+                return nullptr;
+            };
+            for (const auto definition : item->effects) {
+                if (!definition || !definition->baseEffect) continue;
+                if (const auto existing = find_effect(definition)) {
+                    SKSE::log::trace("Keeping effect {:08X} of form {:08X}: elapsed {}s, duration {}s.",
+                                     definition->baseEffect->GetFormID(), item->GetFormID(),
+                                     existing->elapsedSeconds, existing->duration);
+                    continue;
+                }
+                RE::MagicTarget::AddTargetData data{};
+                data.caster = player;
+                data.magicItem = item;
+                data.effect = definition;
+                data.magnitude = definition->GetMagnitude();
+                data.power = 1.0f;
+                data.castingSource = RE::MagicSystem::CastingSource::kInstant;
+                const bool added = target->AddTarget(data);
+                if (const auto restored = find_effect(definition)) {
+                    restored->elapsedSeconds = restored->duration > elapsed ? elapsed : restored->duration - 1;
+                    SKSE::log::trace("Restored effect {:08X} of form {:08X}: elapsed {}s, duration {}s.",
+                                     definition->baseEffect->GetFormID(), item->GetFormID(),
+                                     restored->elapsedSeconds, restored->duration);
+                } else {
+                    SKSE::log::trace("Effect {:08X} of form {:08X}: AddTarget returned {}, no persistent effect found.",
+                                     definition->baseEffect->GetFormID(), item->GetFormID(), added);
+                }
+            }
+        }
+
         void DeleteForms(const bool delete_all) {
             std::shared_lock lock(forms_mutex);
             for (auto& [base, formset] : forms) {
@@ -1011,68 +1050,11 @@ namespace clib_utilsQTR {
             }
             if (new_act_effs.empty()) return;
 
-            const auto plyr = RE::PlayerCharacter::GetSingleton();
-            const auto mg_target = plyr->AsMagicTarget();
-            if (!mg_target) {
-                SKSE::log::error("Failed to get player as magic target.");
-                return;
-            }
-            auto act_eff_list = mg_target->GetActiveEffectList();
-            if (act_eff_list) {
-                for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
-                    if (const auto* act_eff = *it) {
-                        if (const auto mg_item = act_eff->spell) {
-                            const auto mg_item_formid = mg_item->GetFormID();
-                            if (new_act_effs.contains(mg_item_formid) && act_eff->effect &&
-                                std::ranges::contains(mg_item->effects, act_eff->effect)) {
-                                SKSE::log::trace("Skipping recast of {:08X}: existing effect {}, elapsed {}s, duration {}s, inactive {}, dispelled {}.",
-                                                 mg_item_formid, static_cast<const void*>(act_eff),
-                                                 act_eff->elapsedSeconds, act_eff->duration,
-                                                 act_eff->flags.any(RE::ActiveEffect::Flag::kInactive),
-                                                 act_eff->flags.any(RE::ActiveEffect::Flag::kDispelled));
-                                new_act_effs.erase(mg_item_formid);
-                            }
-                        }
-                    }
-                }
-            }
-
-            const auto mg_caster = plyr->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
-            if (!mg_caster) {
-                SKSE::log::error("Failed to get player as magic caster.");
-                return;
-            }
-            for (const auto& item_formid : new_act_effs | std::views::keys) {
-                auto* item = RE::TESForm::LookupByID<RE::MagicItem>(item_formid);
-                if (!item) {
-                    SKSE::log::error("Failed to get item by formid.");
-                    continue;
-                }
-                SKSE::log::trace("Recasting saved form {:08X}: {} effect definitions, saved elapsed {}s.",
-                                 item_formid, item->effects.size(), new_act_effs.at(item_formid));
-                mg_caster->CastSpellImmediate(item, false, plyr, 1.0f, false, 0.0f, nullptr);
-            }
-
-            // now i need to go to act eff list and adjust the elapsed time
-            act_eff_list = mg_target->GetActiveEffectList();
-            if (act_eff_list) {
-                for (auto it = act_eff_list->begin(); it != act_eff_list->end(); ++it) {
-                    if (auto* act_eff = *it) {
-                        if (const auto mg_item = act_eff->spell) {
-                            const auto mg_item_formid = mg_item->GetFormID();
-                            if (new_act_effs.contains(mg_item_formid) && act_eff->effect &&
-                                std::ranges::contains(mg_item->effects, act_eff->effect)) {
-                                if (act_eff->duration > new_act_effs[mg_item_formid]) {
-                                    act_eff->elapsedSeconds = new_act_effs[mg_item_formid];
-                                } else {
-                                    act_eff->elapsedSeconds = act_eff->duration - 1;
-                                }
-                                SKSE::log::trace("Restored effect for form {:08X}: elapsed {}s, duration {}s.",
-                                                 mg_item_formid, act_eff->elapsedSeconds, act_eff->duration);
-                            }
-                        }
-                    }
-                }
+            const auto player = RE::PlayerCharacter::GetSingleton();
+            for (const auto& [formid, elapsed] : new_act_effs) {
+                const auto item = FormReader::GetFormByID<RE::MagicItem>(formid);
+                if (!item) continue;
+                RestoreMissingEffects(player, item, elapsed);
             }
         }
     };
