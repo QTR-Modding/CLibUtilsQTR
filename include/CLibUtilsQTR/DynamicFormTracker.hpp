@@ -22,13 +22,14 @@ namespace clib_utilsQTR {
         RE::FormID effect_formid;
         float elapsed;
         float duration;
+        float input_magnitude;
     };
 
     class DFSaveLoadData : public Serialization::BaseData<DFSaveDataLHS, DFSaveDataRHS> {
     protected:
         // An absent extension identifies legacy saves with only item-level timing.
         std::optional<std::vector<SavedEffect>> saved_effects;
-        static constexpr std::uint32_t effects_format = 2;
+        static constexpr std::uint32_t effects_format = 3;
 
         bool SaveEffects(SKSE::SerializationInterface* serialization) const {
             if (!saved_effects) return true;
@@ -39,7 +40,8 @@ namespace clib_utilsQTR {
                     !serialization->WriteRecordData(effect.index) ||
                     !serialization->WriteRecordData(effect.effect_formid) ||
                     !serialization->WriteRecordData(effect.elapsed) ||
-                    !serialization->WriteRecordData(effect.duration)) return false;
+                    !serialization->WriteRecordData(effect.duration) ||
+                    !serialization->WriteRecordData(effect.input_magnitude)) return false;
             }
             return true;
         }
@@ -58,7 +60,8 @@ namespace clib_utilsQTR {
                     serialization->ReadRecordData(effect.index) != sizeof(effect.index) ||
                     serialization->ReadRecordData(effect.effect_formid) != sizeof(effect.effect_formid) ||
                     serialization->ReadRecordData(effect.elapsed) != sizeof(effect.elapsed) ||
-                    serialization->ReadRecordData(effect.duration) != sizeof(effect.duration)) return false;
+                    serialization->ReadRecordData(effect.duration) != sizeof(effect.duration) ||
+                    serialization->ReadRecordData(effect.input_magnitude) != sizeof(effect.input_magnitude)) return false;
                 if (!serialization->ResolveFormID(effect.effect_formid, effect.effect_formid)) continue;
                 effects.push_back(effect);
             }
@@ -631,11 +634,25 @@ namespace clib_utilsQTR {
             return true;
         }
 
+        class RestoreEffectMagnitude final : public RE::MagicTarget::IPostCreationModification {
+        public:
+            explicit RestoreEffectMagnitude(const float magnitude) : magnitude_(magnitude) {}
+
+            void ModifyActiveEffect(RE::ActiveEffect* effect) override {
+                // The engine applies effectiveness, perks, and actor-value sign handling afterward.
+                effect->magnitude = magnitude_;
+            }
+
+        private:
+            float magnitude_;
+        };
+
         static bool RestoreEffect(RE::Actor* player, RE::AlchemyItem* item, RE::Effect* definition,
-                                  const float elapsed, const std::optional<float> duration = std::nullopt) {
+                                  const float elapsed, const SavedEffect* saved = nullptr) {
             if (!definition || !definition->baseEffect || !std::isfinite(elapsed) || elapsed < 0.f) return false;
-            if (duration && (!std::isfinite(*duration) || *duration < 0.f ||
-                             (*duration > 0.f && elapsed >= *duration))) return false;
+            if (saved && (!std::isfinite(saved->duration) || saved->duration < 0.f ||
+                          !std::isfinite(saved->input_magnitude) ||
+                          (saved->duration > 0.f && elapsed >= saved->duration))) return false;
             const auto target = player->AsMagicTarget();
             const auto find_effect = [target, item, definition]() -> RE::ActiveEffect* {
                 if (const auto list = target->GetActiveEffectList()) {
@@ -655,15 +672,18 @@ namespace clib_utilsQTR {
             data.caster = player;
             data.magicItem = item;
             data.effect = definition;
-            data.magnitude = definition->GetMagnitude();
+            data.magnitude = saved ? saved->input_magnitude : definition->GetMagnitude();
+            RestoreEffectMagnitude magnitude(data.magnitude);
+            if (saved) data.postCreationCallback = &magnitude;
             data.power = 1.0f;
             data.castingSource = RE::MagicSystem::CastingSource::kInstant;
             const bool added = target->AddTarget(data);
             if (const auto restored = find_effect()) {
-                if (duration) restored->duration = *duration;
+                if (saved) restored->duration = saved->duration;
                 restored->elapsedSeconds = elapsed;
-                SKSE::log::trace("Restored effect {:08X} of form {:08X}: elapsed {}s, duration {}s.",
-                                 definition->baseEffect->GetFormID(), item->GetFormID(), elapsed, restored->duration);
+                SKSE::log::trace("Restored effect {:08X} of form {:08X}: elapsed {}s, duration {}s, input magnitude {}, applied magnitude {}.",
+                                 definition->baseEffect->GetFormID(), item->GetFormID(), elapsed, restored->duration,
+                                 data.magnitude, restored->magnitude);
                 return true;
             } else {
                 SKSE::log::trace("Effect {:08X} of form {:08X}: AddTarget returned {}, no persistent effect found.",
@@ -939,10 +959,12 @@ namespace clib_utilsQTR {
                             if (definition == definitions.end() || !*definition || !(*definition)->baseEffect) continue;
                             if (!std::isfinite(act_eff->elapsedSeconds) || act_eff->elapsedSeconds < 0.f ||
                                 !std::isfinite(act_eff->duration) || act_eff->duration < 0.f ||
+                                !std::isfinite((*definition)->GetMagnitude()) ||
                                 (act_eff->duration > 0.f && act_eff->elapsedSeconds >= act_eff->duration)) continue;
                             const SavedEffect saved{act_eff_formid,
                                 static_cast<std::uint32_t>(std::distance(definitions.begin(), definition)),
-                                (*definition)->baseEffect->GetFormID(), act_eff->elapsedSeconds, act_eff->duration};
+                                (*definition)->baseEffect->GetFormID(), act_eff->elapsedSeconds, act_eff->duration,
+                                (*definition)->GetMagnitude()};
                             const auto base_form = GetOGFormOfDynamic(act_eff_formid);
                             if (!base_form) continue;
                             std::shared_lock lock(customIDforms_mutex);
@@ -957,9 +979,9 @@ namespace clib_utilsQTR {
                                                 .effect = saved});
                             saved_effects->push_back(saved);
                             ++n_act_effs;
-                            SKSE::log::trace("Saving effect {:08X}, index {}, of form {:08X}: elapsed {}s, duration {}s.",
+                            SKSE::log::trace("Saving effect {:08X}, index {}, of form {:08X}: elapsed {}s, duration {}s, input magnitude {}.",
                                              saved.effect_formid, saved.index, saved.dynamic_formid, saved.elapsed,
-                                             saved.duration);
+                                             saved.duration, saved.input_magnitude);
                         }
                     }
                 }
@@ -1194,7 +1216,7 @@ namespace clib_utilsQTR {
                                         dyn_formid, effect->index);
                         continue;
                     }
-                    if (RestoreEffect(player, item, definition, elapsed, effect->duration)) MarkActive(dyn_formid);
+                    if (RestoreEffect(player, item, definition, elapsed, &*effect)) MarkActive(dyn_formid);
                 } else {
                     // Older records have no definition list; preserve best-effort restoration.
                     for (const auto definition : item->effects) {
