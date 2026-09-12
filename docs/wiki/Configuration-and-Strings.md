@@ -64,3 +64,33 @@ const auto joined = StringHelpers::join(
 | `includesWord(text, candidates)` | Tests case-insensitive, space-delimited words or phrases |
 
 `includesWord()` is not general punctuation-aware or Unicode word segmentation.
+
+## YAML templates with merge keys
+
+Install the `yaml` feature (`yaml-skyrim` includes it). Resolve merges once after parsing, before reading fields:
+
+```cpp
+#include <CLibUtilsQTR/PresetHelpers/YAMLMerge.hpp>
+
+auto config = YAML::LoadFile("preset.yml");
+PresetHelpers::YAML_Helpers::ResolveMergeKeys(config);
+```
+
+A merge key (`<<`) copies shared fields into a mapping:
+
+```yaml
+fire: &fire
+  duration: 0.06
+  sound: ThawSound
+
+transformers:
+  - <<: *fire
+    finalFormEditorID: FoodBeef
+  - <<: *fire
+    finalFormEditorID: FoodMammothMeat
+    duration: 0.1
+```
+
+Explicit fields win, including null and zero. `<<: [*first, *second]` accepts multiple templates; earlier templates win when both define a field. Merges are shallow: an explicit nested mapping replaces the inherited mapping. Nested merge directives are resolved too. Quoted `"<<"` remains an ordinary key.
+
+The helper updates the document in place and preserves aliases. It accepts scalar mapping keys. Invalid merge values and circular aliases throw `YAML::Exception`; discard the document if resolution fails. Catch this alongside your usual YAML parsing errors.
