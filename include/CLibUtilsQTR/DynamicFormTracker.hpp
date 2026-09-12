@@ -658,11 +658,11 @@ namespace clib_utilsQTR {
                 return false;
             }
             const auto target = player->AsMagicTarget();
-            const auto find_effect = [target, item, definition, caster]() -> RE::ActiveEffect* {
+            const auto find_effect = [target, item, definition, caster, saved]() -> RE::ActiveEffect* {
                 if (const auto list = target->GetActiveEffectList()) {
                     for (const auto effect : *list) {
                         if (effect && effect->spell == item && effect->effect == definition &&
-                            effect->GetCasterActor().get() == caster &&
+                            (!saved || effect->GetCasterActor().get() == caster) &&
                             !effect->flags.any(RE::ActiveEffect::Flag::kDispelled)) return effect;
                     }
                 }
