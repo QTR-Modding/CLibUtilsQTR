@@ -3,7 +3,7 @@
 #include "CLibUtilsQTR/StringHelpers.hpp"
 #include "CLibUtilsQTR/PresetHelpers/PresetHelpers.hpp"
 #include "CLibUtilsQTR/FormReader.hpp"
-#include "yaml-cpp/yaml.h"
+#include "CLibUtilsQTR/PresetHelpers/YAMLMerge.hpp"
 
 namespace PresetHelpers::YAML_Helpers {
     inline std::vector<FormID> StringToFormIDs(const std::string& input) {
