@@ -1,6 +1,6 @@
 # CLibUtilsQTR
 
-A header-only C++23 utility library for Skyrim plugins and general C++ projects. There is no QTR DLL to build or distribute.
+A header-only C++23 utility library for Skyrim plugins and general C++ projects.
 
 ## Installation (via vcpkg)
 
