@@ -1,27 +1,101 @@
 # Getting started
 
-For a first installation, follow the [README's four setup steps](https://github.com/QTR-Modding/CLibUtilsQTR#installation-via-vcpkg). They install the whole library and its default dependencies. No module selection is required.
+These steps add QTR to an existing CMake project using vcpkg. They install all QTR headers and dependencies. Optional module selection comes afterward.
 
-This page covers optional dependency choices, linking, and updating. The helper guides below cover the code on `main`.
+You need CMake, vcpkg, and a C++23 compiler. Skyrim helpers also require your project's CommonLibVR-MIT and SKSE setup; general helpers can be used without Skyrim. The guides describe the code on `main`.
 
 ## Install with vcpkg
 
-The [installation steps](https://github.com/QTR-Modding/CLibUtilsQTR#installation-via-vcpkg) use a **local port**: two files copied into your project that tell vcpkg how to download and install QTR.
+1. **Copy the package files.** A vcpkg *port* is a package definition: it tells vcpkg where to download a library and what it depends on. Copy these directories into your project:
 
-Two files share the name `vcpkg.json`, but have different jobs:
+   | Copy from | Destination in your project |
+   | --- | --- |
+   | [QTR's port](https://github.com/QTR-Modding/CLibUtilsQTR/tree/main/cmake/ports/clib-utils-qtr) | `cmake/ports/clib-utils-qtr` |
+   | [PO3's CLibUtil port](https://github.com/powerof3/CLibUtil/tree/master/cmake/ports/clib-util), if your project does not already supply it | `cmake/ports/clib-util` |
 
-| File in your project | Purpose |
-| --- | --- |
-| `vcpkg.json` | Requests the packages your project uses. `"clib-utils-qtr"` requests QTR with all default dependencies. |
-| `cmake/ports/clib-utils-qtr/vcpkg.json` | Defines QTR's dependencies and optional modules. Copy it with `portfile.cmake`; you do not need to write the feature definitions yourself. |
+   Each directory contains `portfile.cmake` and `vcpkg.json`. Copy both files unchanged. The `vcpkg.json` inside the port defines the package; your project's own `vcpkg.json` requests packages in step 3.
 
-Keep the supplied port unchanged if you want optional module selection. For a shorter port that always installs everything, see [the alternative below](#a-local-port-that-always-installs-everything).
+2. **Tell vcpkg where those ports are.** Add this to `vcpkg-configuration.json` in your project directory:
+
+   ```json
+   { "overlay-ports": ["cmake/ports"] }
+   ```
+
+   If your CMake preset already sets `VCPKG_OVERLAY_PORTS` to that directory, this is already configured. Keep one of these methods.
+
+3. **Request QTR.** Add `"clib-utils-qtr"` to the dependencies in your project's `vcpkg.json`:
+
+   ```json
+   {
+     "dependencies": ["clib-utils-qtr"]
+   }
+   ```
+
+   That requests the whole library with all default dependencies. No `features` or `default-features` setting is needed. For both JSON files, merge the entries into existing configuration rather than replacing other settings.
+
+   If the project has no vcpkg baseline yet, run this once from the project directory:
+
+   ```sh
+   vcpkg x-update-baseline --add-initial-baseline
+   ```
+
+   A baseline records the versions of vcpkg packages to use. Preserve an existing baseline.
+
+4. **Make the headers available to your CMake target.** After your `add_library(...)` or `add_executable(...)` call, add:
+
+   ```cmake
+   find_path(CLIB_UTILS_QTR_INCLUDE_DIRS "CLibUtilsQTR/utils.hpp" REQUIRED)
+   target_include_directories(your_target PRIVATE ${CLIB_UTILS_QTR_INCLUDE_DIRS})
+   target_compile_features(your_target PRIVATE cxx_std_23)
+   ```
+
+   Replace `your_target` with the target's name. Keep equivalent settings your project already has. `utils.hpp` is only the file CMake searches for to locate QTR's include directory; this does not include that header or select any helpers.
+
+Configure and build with your existing vcpkg-enabled CMake preset. If you have no such preset, configure with vcpkg's toolchain file instead, replacing `<vcpkg>` with your vcpkg installation directory:
+
+```sh
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="<vcpkg>/scripts/buildsystems/vcpkg.cmake"
+cmake --build build
+```
+
+CMake runs vcpkg to install the packages during configuration. For initial vcpkg setup, see [vcpkg's CMake instructions](https://learn.microsoft.com/en-us/vcpkg/users/buildsystems/cmake-integration).
+
+## Use a helper
+
+Choose the operation you need in the [guide index](https://github.com/QTR-Modding/CLibUtilsQTR/wiki#guides). Each guide shows the header to include and a usage example. Installing the whole library does not require including every header.
+
+Skyrim headers expect your plugin's engine declarations to be available first, usually through its PCH. `CLibUtilsQTR/utils.hpp` collects many of those headers. Prefer the specific headers shown in the guides, particularly in programs that do not use Skyrim.
+
+## Link the libraries you use
+
+QTR itself is header-only. Some helpers call compiled dependency libraries, so using those helpers requires the corresponding CMake link below. Skip any link your project already provides; replace `your_target` with your target's name.
+
+**Prologue hooks need Detours:**
+
+```cmake
+find_library(DETOURS_LIBRARY detours REQUIRED)
+target_link_libraries(your_target PRIVATE ${DETOURS_LIBRARY})
+```
+
+**YAML helpers need yaml-cpp:**
+
+```cmake
+find_package(yaml-cpp CONFIG REQUIRED)
+target_link_libraries(your_target PRIVATE yaml-cpp::yaml-cpp)
+```
+
+**Logging needs spdlog**, which your CommonLib setup may already provide:
+
+```cmake
+find_package(spdlog CONFIG REQUIRED)
+target_link_libraries(your_target PRIVATE spdlog::spdlog)
+```
 
 ## Choose dependencies
 
-A vcpkg **feature** is a named group of dependencies. All QTR headers are installed whichever features you select; features do not enable runtime behavior or remove C++ functions.
+This section is optional. A vcpkg *feature* selects a group of external dependencies. All headers are installed regardless of the selection. Feature names in the helper guides matter only when you want fewer dependencies than the default installation.
 
-Leave the plain `"clib-utils-qtr"` dependency alone to get everything. To use only the Skyrim helpers, replace that entry in your project's dependency list with:
+For example, to request only the dependencies for Skyrim helpers, replace the QTR entry in your project's `vcpkg.json` with:
 
 ```json
 {
@@ -31,56 +105,29 @@ Leave the plain `"clib-utils-qtr"` dependency alone to get everything. To use on
 }
 ```
 
-`default-features: false` turns off the default selection; `features` chooses what to install instead. Add other names to that array if needed. Without `default-features: false`, your selection adds to the defaults.
+`default-features: false` turns off the default dependency groups. `features` selects what to install instead; add more names to that array as needed. Leave the copied port files unchanged.
 
-The supplied local port offers:
+The supplied port supports these groups:
 
-| Feature | Helpers | Dependencies installed |
+| Feature | Helpers | Dependencies |
 | --- | --- | --- |
-| Base (always included) | Strings, debug locks, Tasker, Ticker, preset values, DLL signing | None |
-| `skyrim` | Logging, forms including dynamic form tracking, TXT groups, animation, geometry, drawing, Papyrus, serialization | `clib-util`, `spdlog` |
+| Base, always included | Strings, debug locks, Tasker, Ticker, preset values, DLL signing | No external packages |
+| `skyrim` | Forms and dynamic forms, logging, animation, geometry, drawing, Papyrus, serialization, TXT groups | `clib-util`, `spdlog` |
 | `hooks` | Prologue hooks | `detours` |
-| `json` | JSON fields | `rapidjson` |
+| `json` | JSON fields and getters | `rapidjson` |
 | `yaml-skyrim` | YAML form lists and merge keys | `skyrim`, `yaml-cpp` |
 
-For only the base helpers, use:
+For just the base helpers, use:
 
 ```json
 { "name": "clib-utils-qtr", "default-features": false }
 ```
 
-Include the specific headers you use. `CLibUtilsQTR/utils.hpp` includes helpers that need the optional dependencies and Skyrim declarations. Signing has its own `CLibUtilsQTR/Signing.hpp` header; it needs Windows x64 and the Windows SDK, but no external package.
-
-Skyrim helpers assume your plugin already uses CommonLibVR-MIT and SKSE. Include them after your plugin's engine PCH. Installing the `skyrim` dependencies does not create a plugin target or initialize SKSE.
-
-## Link the libraries you use
-
-Installing a dependency makes it available to CMake; it does not automatically link it to your target. Keep any links your project already has. Add the following only for helpers you use, replacing `your_target` with your target's name.
-
-For prologue hooks:
-
-```cmake
-find_library(DETOURS_LIBRARY detours REQUIRED)
-target_link_libraries(your_target PRIVATE ${DETOURS_LIBRARY})
-```
-
-For YAML presets or merge keys:
-
-```cmake
-find_package(yaml-cpp CONFIG REQUIRED)
-target_link_libraries(your_target PRIVATE yaml-cpp::yaml-cpp)
-```
-
-For logging, if spdlog is not already linked through your plugin setup:
-
-```cmake
-find_package(spdlog CONFIG REQUIRED)
-target_link_libraries(your_target PRIVATE spdlog::spdlog)
-```
+Individual headers can have platform requirements even without package dependencies. For example, `Signing.hpp` requires Windows x64 and the Windows SDK.
 
 ## A local port that always installs everything
 
-Use this alternative only if you want to maintain a simpler local port with no module selection. In **`cmake/ports/clib-utils-qtr/vcpkg.json`**, remove `features` and `default-features` and add this top-level field:
+If you prefer a short package definition without optional modules, you can simplify **`cmake/ports/clib-utils-qtr/vcpkg.json`**. Remove its `features` and `default-features` fields and add this top-level field:
 
 ```json
 "dependencies": [
@@ -92,31 +139,16 @@ Use this alternative only if you want to maintain a simpler local port with no m
 ]
 ```
 
-Keep the file's other metadata and `portfile.cmake` unchanged. The port still installs all headers, and now always installs all five dependencies. Consumers of this port cannot reduce the dependency set with feature selection.
+Keep its other metadata and `portfile.cmake` unchanged. This port always installs all five dependencies; consumers of it cannot select a smaller set through QTR features. The supplied port's defaults install the same set, while retaining that choice.
 
-This list covers the current library. When updating your custom port, check whether the new version adds dependencies. Copying the supplied port unchanged avoids maintaining this list yourself.
+When updating this customized port, check whether the new library version adds dependencies to the list.
 
 ## Update QTR
 
-Replace both local port files together with the versions from the QTR release you want to use, then reconfigure CMake. `portfile.cmake` pins the downloaded source and its checksum; changing only the version text in `vcpkg.json` does not update the headers.
+Copy the two port files from the new QTR release together, then reconfigure CMake. `portfile.cmake` contains the downloaded source revision and checksum; changing only the version in `vcpkg.json` does not update the headers.
 
-If you customized the port, apply your changes to the updated package definition. Preserve an existing PO3 `clib-util` pin unless you intend to update that dependency too.
+If you customized the dependency list, apply that choice to the new package definition. Update PO3's CLibUtil port separately if needed; a QTR update does not require replacing an existing CLibUtil pin automatically.
 
 ## Find a helper
 
-| Task | Guide | Names used in code |
-| --- | --- | --- |
-| Dynamic form creation and lifecycle | [Dynamic form tracking](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Dynamic-Form-Tracking) | `clib_utilsQTR` |
-| Rotating logs | [Logging](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Logging) | `clib_utilsQTR` |
-| Form resolution and TXT/YAML groups | [Forms and groups](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Forms-and-Groups) | `FormReader`, `PresetHelpers` |
-| JSON, preset values, strings | [Configuration and strings](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Configuration-and-Strings) | `Presets`, `clib_utilsQTR`, `StringHelpers` |
-| Background work | [Scheduling](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Scheduling) | `clib_utilsQTR::Tasker`, global `Ticker` |
-| Mutex checks | [Debug locks](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Debug-Locks) | `clib_utilsQTR` |
-| Function hooks | [Hooks](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Hooks) | `clib_utilsQTR` |
-| Script calls | [Papyrus](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Papyrus) | `Papyrus` |
-| Animation queues | [Animations](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Animations) | global `Animation`, `Animator` |
-| Bounds and diagnostic shapes | [Geometry and drawing](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Geometry-and-Drawing) | `BoundingBox`, `DebugAPI_IMPL` |
-| Serialization helpers | [Serialization](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Serialization) | `Serialization` |
-| Verified DLL exports | [DLL Signing](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Signing) | `clib_utilsQTR::Signing` |
-
-For authors contributing TXT group files, see the existing [Form Groups guide](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Form-Groups).
+The [complete guide index](https://github.com/QTR-Modding/CLibUtilsQTR/wiki#guides) lists each area of the library with its usage guide.
