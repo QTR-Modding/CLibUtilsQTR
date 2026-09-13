@@ -4,7 +4,7 @@ A header-only C++23 utility library for Skyrim plugins and general C++ projects.
 
 ## Installation (via vcpkg)
 
-You need CMake, vcpkg, and a C++23 compiler on Windows. For Skyrim helpers, your project must also be configured with CommonLibVR-MIT and SKSE.
+You need CMake, vcpkg, and a C++23 compiler on Windows. Modules that depend on Skyrim require CommonLib.
 
 1. **Copy the package files into your project.**
 

@@ -2,7 +2,7 @@
 
 These steps add QTR to an existing CMake project using vcpkg. They install all QTR headers and dependencies. Optional module selection comes afterward.
 
-You need CMake, vcpkg, and a C++23 compiler. Skyrim helpers also require your project's CommonLibVR-MIT and SKSE setup; general helpers can be used without Skyrim. The guides describe the code on `main`.
+You need CMake, vcpkg, and a C++23 compiler. Modules that depend on Skyrim require CommonLib. The guides describe the code on `main`.
 
 ## Install with vcpkg
 
