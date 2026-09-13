@@ -73,21 +73,21 @@ QTR itself is header-only. Some helpers call compiled dependency libraries, so u
 **Prologue hooks need Detours:**
 
 ```cmake
-find_library(DETOURS_LIBRARY detours REQUIRED)
+find_library(DETOURS_LIBRARY detours REQUIRED) # Only for Hooks.hpp.
 target_link_libraries(your_target PRIVATE ${DETOURS_LIBRARY})
 ```
 
 **YAML helpers need yaml-cpp:**
 
 ```cmake
-find_package(yaml-cpp CONFIG REQUIRED)
+find_package(yaml-cpp CONFIG REQUIRED) # Only for YAML helpers.
 target_link_libraries(your_target PRIVATE yaml-cpp::yaml-cpp)
 ```
 
 **Logging needs spdlog**, which your CommonLib setup may already provide:
 
 ```cmake
-find_package(spdlog CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED) # Only if logging needs it and it is not already provided.
 target_link_libraries(your_target PRIVATE spdlog::spdlog)
 ```
 

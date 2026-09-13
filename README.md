@@ -35,24 +35,31 @@ You need CMake, vcpkg, and a C++23 compiler on Windows. Modules that depend on S
 
    If your project has no vcpkg baseline, run `vcpkg x-update-baseline --add-initial-baseline` once from the project directory. This records the package versions to use. Keep an existing baseline unchanged.
 
-4. **Connect QTR and its dependencies to your CMake target.** Add the following after your `add_library(...)` or `add_executable(...)` call. Replace `your_target` with that target's name and keep any equivalent settings you already have.
+4. **Add QTR's headers to your CMake target.** Add the following after your `add_library(...)` or `add_executable(...)` call. Replace `your_target` with that target's name and keep any equivalent settings you already have.
 
    ```cmake
    find_path(CLIB_UTILS_QTR_INCLUDE_DIRS "CLibUtilsQTR/utils.hpp" REQUIRED)
-   find_library(DETOURS_LIBRARY detours REQUIRED)
-   find_package(spdlog CONFIG REQUIRED)
-   find_package(yaml-cpp CONFIG REQUIRED)
-
    target_include_directories(your_target PRIVATE ${CLIB_UTILS_QTR_INCLUDE_DIRS})
    target_compile_features(your_target PRIVATE cxx_std_23)
-   target_link_libraries(your_target PRIVATE
-       ${DETOURS_LIBRARY}
-       spdlog::spdlog
-       yaml-cpp::yaml-cpp
-   )
    ```
 
-   `find_path` locates the include directory for the whole library. The remaining calls make its compiled dependencies available; the other dependencies are header-only.
+   `find_path` locates the include directory for the whole library.
+
+   **Optional links:** uncomment only the pairs for helpers you use. Leave a pair commented out if your project already provides that library.
+
+   ```cmake
+   # Only for Hooks.hpp (Detours hooks).
+   # find_library(DETOURS_LIBRARY detours REQUIRED)
+   # target_link_libraries(your_target PRIVATE ${DETOURS_LIBRARY})
+
+   # Only for logging; skip if CommonLib already provides spdlog.
+   # find_package(spdlog CONFIG REQUIRED)
+   # target_link_libraries(your_target PRIVATE spdlog::spdlog)
+
+   # Only for YAML helpers.
+   # find_package(yaml-cpp CONFIG REQUIRED)
+   # target_link_libraries(your_target PRIVATE yaml-cpp::yaml-cpp)
+   ```
 
 5. **Configure and build.** Use your existing vcpkg-enabled CMake preset. If you do not have one, run these commands from the project directory, replacing `<vcpkg>` with your vcpkg installation path:
 
@@ -67,7 +74,19 @@ QTR is now available to your target. Include the headers for the helpers you use
 
 ## Optional dependencies
 
-The setup above gets everything. The wiki explains how to [select fewer dependencies](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#choose-dependencies) or [use a shorter local port without module choices](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#a-local-port-that-always-installs-everything).
+The plain `"clib-utils-qtr"` dependency installs all default dependencies. Commenting out a CMake link does not change what vcpkg installs.
+
+To omit QTR's YAML and Detours dependencies, for example, replace the QTR entry in your project's `vcpkg.json` with:
+
+```json
+{
+  "name": "clib-utils-qtr",
+  "default-features": false,
+  "features": ["skyrim"]
+}
+```
+
+See the wiki for the [available features](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#choose-dependencies) or the [shorter local port without module choices](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#a-local-port-that-always-installs-everything).
 
 ## Updating
 
