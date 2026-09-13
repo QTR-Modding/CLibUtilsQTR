@@ -179,7 +179,8 @@ namespace FormReader {
             }
         }
 
-        if (isValidHexWithLength7or8(formEditorId.c_str())) {
+        if (formEditorId.starts_with("0x") || formEditorId.starts_with("0X") ||
+            isValidHexWithLength7or8(formEditorId.c_str())) {
             if (const auto temp_form = GetFormByID(FormReader::GetFormIDFromString(formEditorId)))
                 return temp_form;
         }
