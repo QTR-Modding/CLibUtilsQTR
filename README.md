@@ -1,137 +1,68 @@
 # CLibUtilsQTR
 
-[User guides and examples](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started). Wiki pages are maintained in `docs/wiki` and published when merged into `main`.
-
----
+C++23 helpers for Skyrim plugins and general C++ code, including forms, logging, configuration, hooks, and background tasks. The library is header-only: include the helpers you need; there is no QTR DLL to build or distribute.
 
 ## Installation (via vcpkg)
 
-Add to your `vcpkg.json`:
+These steps add the whole library to an existing CMake project. You need vcpkg and a C++23 compiler. Skyrim helpers also need your project's CommonLibVR-MIT/SKSE setup.
 
-```json
-"dependencies": [
-  "clib-utils-qtr"
-]
+1. Copy [cmake/ports/clib-utils-qtr](cmake/ports/clib-utils-qtr) into the same path in your project. Keep both `portfile.cmake` and `vcpkg.json` together. They tell vcpkg where to download QTR and which dependencies to install; you can use them unchanged.
+
+   If your project does not already supply `clib-util`, also copy [PO3's clib-util port](https://github.com/powerof3/CLibUtil/tree/master/cmake/ports/clib-util) into `cmake/ports/clib-util`.
+
+2. Register that folder in your project's `vcpkg-configuration.json`:
+
+   ```json
+   { "overlay-ports": ["cmake/ports"] }
+   ```
+
+   This makes vcpkg find the copied packages. If your CMake preset already sets `VCPKG_OVERLAY_PORTS` to this folder, skip this step.
+
+3. Add QTR to your project's `vcpkg.json`:
+
+   ```json
+   {
+     "dependencies": ["clib-utils-qtr"]
+   }
+   ```
+
+   This installs **all QTR headers and all default dependencies**. No feature list is needed. Merge these entries into existing JSON files rather than replacing the files.
+
+   If your project has no package baseline yet, run `vcpkg x-update-baseline --add-initial-baseline` from its directory. This records the versions of vcpkg packages to use; keep an existing baseline unchanged.
+
+4. After creating your target in `CMakeLists.txt`, add:
+
+   ```cmake
+   find_path(CLIB_UTILS_QTR_INCLUDE_DIRS "CLibUtilsQTR/StringHelpers.hpp" REQUIRED)
+   target_include_directories(your_target PRIVATE ${CLIB_UTILS_QTR_INCLUDE_DIRS})
+   target_compile_features(your_target PRIVATE cxx_std_23)
+   ```
+
+   Replace `your_target` with your executable or plugin target's name. Configure CMake using your existing vcpkg preset. If vcpkg is not wired into CMake yet, follow [vcpkg's CMake setup](https://learn.microsoft.com/en-us/vcpkg/users/buildsystems/cmake-integration).
+
+You can now include a helper:
+
+```cpp
+#include <CLibUtilsQTR/StringHelpers.hpp>
+
+const auto name = StringHelpers::trim("  My preset  ");
+// name == "My preset"
 ```
 
-In your `CMakeLists.txt`:
-
-```cmake
-find_path(ClibUtilsQTR_INCLUDE_DIRS "ClibUtilsQTR/utils.hpp")
-target_include_directories(your_target PRIVATE ${ClibUtilsQTR_INCLUDE_DIRS})
-```
-
-This is a header-only library. Using [`clib_utilsQTR::write_prologue_hook`](include/CLibUtilsQTR/Hooks.hpp) requires linking Microsoft Detours:
-
-```cmake
-find_library(DETOURS_LIBRARY detours REQUIRED)
-target_link_libraries(your_target PRIVATE ${DETOURS_LIBRARY})
-```
-
-To use the CLibUtilsQTR port locally, copy the cmake/ folder from the CLibUtilsQTR repository into your project:
-
-```markdown
-your-project/
-└── cmake/
-    └── ports/
-        └── clib-utils-qtr/
-            ├── portfile.cmake
-            └── vcpkg.json
-
-```
+Some helpers also require linking their external library. See the wiki's [linking examples](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#link-the-libraries-you-use) when using hooks, logging, or YAML.
 
 ## Optional dependencies
 
-The features below remain enabled by default. Dependency-free helpers, including signing, are part of base.
-To install only hooks, for example:
+The setup above gets everything. To install fewer dependencies, see [Choose dependencies](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#choose-dependencies).
 
-```json
-{
-  "name": "clib-utils-qtr",
-  "default-features": false,
-  "features": ["hooks"]
-}
-```
-
-Omit `features` to install only the dependency-free base package.
-
-| Feature | Headers | Dependencies |
-| --- | --- | --- |
-| Base (always available) | `DebugLocks.hpp`, `StringHelpers.hpp`, `Tasker.hpp`, `Ticker.hpp`, `PresetSettings.hpp`, `Signing.hpp` | None |
-| `skyrim` | Animation, bounding box, debug drawing, forms (including `DynamicFormTracker.hpp`), logging, Papyrus, serialization, and TXT preset helpers | `clib-util`, `spdlog` |
-| `hooks` | `Hooks.hpp` | `detours` |
-| `json` | `PresetHelpers/Config.hpp`, `PresetHelpers/Getters.hpp` | `rapidjson` |
-| `yaml-skyrim` | `PresetHelpers/PresetHelpersYAML.hpp` | `yaml-cpp` and the `skyrim` feature |
-
-Include the specific headers you use. `utils.hpp` covers the existing helpers;
-signing uses its own `Signing.hpp` header. Features control dependency installation;
-they do not remove headers or change the C++ API. Skyrim helpers still expect
-your project's CommonLibSSE/SKSE setup. Link Detours or yaml-cpp when using
-their helpers.
-
-`Signing.hpp` requires Windows x64 and the Windows SDK, but no external packages.
+If you maintain your own local port and want a short package definition without module choices, see [A local port that always installs everything](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#a-local-port-that-always-installs-everything).
 
 ## Logging
 
-In your SKSE plugin's load entry point:
-
-```cpp
-#include <CLibUtilsQTR/Logging.hpp>
-
-clib_utilsQTR::SetupLog();
-```
-
-This uses the plugin declaration's name and the SKSE log directory. Each log
-rotates at 2 MiB, retaining two backups, and starts a new file each launch.
-Debug builds log and flush at `trace`; release builds log and flush at `info`.
-Link your project's CommonLibSSE and spdlog as usual.
-
-Override only the settings you need through `LogOptions`:
-
-```cpp
-clib_utilsQTR::SetupLog({.max_file_size = 4 * 1024 * 1024, .backup_count = 1});
-```
-
-`level` controls which messages are logged. `flush_level` controls which messages
-flush the file buffer immediately and defaults to the selected `level`.
+[Logging guide](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Logging): call `clib_utilsQTR::SetupLog()` for rotating logs, with optional settings.
 
 ## Debug lock guards
 
-Include `CLibUtilsQTR/DebugLocks.hpp` and give each mutex a distinct tag:
+[Debug locks guide](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Debug-Locks): detect recursive locks, invalid unlocks, and lock-order violations.
 
-```cpp
-#include <CLibUtilsQTR/DebugLocks.hpp>
-
-struct InventoryMutexTag {
-    static constexpr auto name = "inventory";
-};
-
-std::shared_mutex inventory_mutex;
-
-void UpdateInventory() {
-    clib_utilsQTR::DebugUniqueLock<InventoryMutexTag> lock{inventory_mutex};
-    // Update the protected inventory.
-}
-```
-
-Use `DebugSharedLock<Tag>` for shared access. Both guards release the mutex on
-destruction and support `unlock()` for early release. They reject same-thread
-recursive acquisition, shared/unique conversion while locked, and unlocking
-without ownership. Normal contention between threads waits for the mutex.
-
-Use the same tag for every guard of a given mutex, and a different tag for each
-other mutex. `DebugLockHeld<Tag>()` reports whether the calling thread holds a
-guard with that tag.
-
-To enforce an ordering rule, a tag can provide
-`static void CheckLockOrder(const std::source_location& where)`. The guard calls
-it before acquiring the mutex. Check other tags with `DebugLockHeld<OtherTag>()`
-and call `ReportLockViolation<Tag>("reason", where)` to reject an acquisition.
-
-Violations print the tag's `name`, reason, and source location to standard error
-and abort. To use your own logger, provide
-`static void ReportViolation(const char* name, const char* reason, const std::source_location& where)`
-on the tag. `ReportLockViolation` aborts after that callback returns.
-
-These guards perform their checks regardless of `NDEBUG`. Projects that want
-them only in Debug builds can select standard locks in their Release code.
+For all other helpers, see the [guide index](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#find-a-helper).
