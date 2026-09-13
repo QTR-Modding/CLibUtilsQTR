@@ -1,6 +1,6 @@
 # DLL signing
 
-The `signing` module verifies Windows x64 DLLs signed with RSA/SHA-256 and resolves exports from the verified loaded image. It is header-only C++23 and uses Windows Crypt32, with no game or CommonLib dependency.
+`Signing.hpp` verifies Windows x64 DLLs signed with RSA/SHA-256 and resolves exports from the verified loaded image. It is header-only C++23 and uses Windows Crypt32, with no game or CommonLib dependency.
 
 ## Add it to a client
 

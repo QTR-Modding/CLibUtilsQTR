@@ -67,7 +67,7 @@ const auto joined = StringHelpers::join(
 
 ## YAML templates with merge keys
 
-Install the `yaml` feature (`yaml-skyrim` includes it). Resolve merges once after parsing, before reading fields:
+These helpers need yaml-cpp, included by the supplied port's default `yaml-skyrim` feature. [Link yaml-cpp](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#link-the-libraries-you-use), then resolve merges once after parsing, before reading fields:
 
 ```cpp
 #include <CLibUtilsQTR/PresetHelpers/YAMLMerge.hpp>
