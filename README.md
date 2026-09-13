@@ -30,15 +30,17 @@ These steps add the whole library to an existing CMake project. You need vcpkg a
 
    If your project has no package baseline yet, run `vcpkg x-update-baseline --add-initial-baseline` from its directory. This records the versions of vcpkg packages to use; keep an existing baseline unchanged.
 
-4. After creating your target in `CMakeLists.txt`, add:
+4. Your CMake target needs access to QTR's installed include directory and C++23 enabled. If your project already provides both, skip this step. Otherwise, add this after creating your target in `CMakeLists.txt`:
 
    ```cmake
-   find_path(CLIB_UTILS_QTR_INCLUDE_DIRS "CLibUtilsQTR/StringHelpers.hpp" REQUIRED)
+   find_path(CLIB_UTILS_QTR_INCLUDE_DIRS "CLibUtilsQTR/utils.hpp" REQUIRED)
    target_include_directories(your_target PRIVATE ${CLIB_UTILS_QTR_INCLUDE_DIRS})
    target_compile_features(your_target PRIVATE cxx_std_23)
    ```
 
-   Replace `your_target` with your executable or plugin target's name. Configure CMake using your existing vcpkg preset. If vcpkg is not wired into CMake yet, follow [vcpkg's CMake setup](https://learn.microsoft.com/en-us/vcpkg/users/buildsystems/cmake-integration).
+   Replace `your_target` with your executable or plugin target's name. `find_path` locates the directory containing all QTR headers; it does not include `utils.hpp` in your code.
+
+Configure CMake using your existing vcpkg preset. If vcpkg is not wired into CMake yet, follow [vcpkg's CMake setup](https://learn.microsoft.com/en-us/vcpkg/users/buildsystems/cmake-integration).
 
 You can now include a helper:
 
@@ -57,12 +59,6 @@ The setup above gets everything. To install fewer dependencies, see [Choose depe
 
 If you maintain your own local port and want a short package definition without module choices, see [A local port that always installs everything](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#a-local-port-that-always-installs-everything).
 
-## Logging
+## Guides
 
-[Logging guide](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Logging): call `clib_utilsQTR::SetupLog()` for rotating logs, with optional settings.
-
-## Debug lock guards
-
-[Debug locks guide](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Debug-Locks): detect recursive locks, invalid unlocks, and lock-order violations.
-
-For all other helpers, see the [guide index](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#find-a-helper).
+See the [complete guide index](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started#find-a-helper) for examples and requirements for each part of the library.
