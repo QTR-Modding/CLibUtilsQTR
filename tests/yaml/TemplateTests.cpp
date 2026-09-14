@@ -113,6 +113,20 @@ values:
     Reject("templates: {ignore: {parameters: [x], body: 1}}\nx: {use: ignore, args: [{use: missing, args: []}]}", "Unknown YAML template");
     Reject("templates: {ignore: {parameters: [x], body: 1}, loop: {parameters: [], body: {use: loop, args: []}}}\nx: {use: ignore, args: [{use: loop, args: []}]}", "Recursive");
     Require(Expand("templates: {id: {parameters: [x], body: $x}}\nx: {use: id, args: [{use: id, args: [7]}]}")["x"].as<int>() == 7);
+    auto aliases = Expand(R"(
+templates:
+  linked:
+    parameters: [input]
+    body: {base: &linked {v: $input}, alias: *linked}
+rows: [{use: linked, args: [1]}, {use: linked, args: [2]}]
+base: &outer {v: 3}
+alias: *outer
+)");
+    Require(aliases["rows"][0]["base"].is(aliases["rows"][0]["alias"]));
+    aliases["rows"][0]["base"]["v"] = 9;
+    Require(aliases["rows"][0]["alias"]["v"].as<int>() == 9);
+    Require(aliases["rows"][1]["alias"]["v"].as<int>() == 2);
+    Require(aliases["base"].is(aliases["alias"]));
     if (argc == 3) {
         std::size_t count = 0;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[1])) {

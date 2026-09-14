@@ -32,33 +32,29 @@ namespace PresetHelpers::YAML_Helpers {
                 }
             }
 
-            YAML::Node Substitute(const YAML::Node& node, const Arguments& arguments, const std::string& name) {
+            void Substitute(YAML::Node node, const Arguments& arguments, const std::string& name,
+                            std::vector<YAML::Node>& visited) {
+                if (std::any_of(visited.begin(), visited.end(), [&](const auto& seen) { return seen.is(node); })) return;
+                visited.push_back(node);
                 if (node.IsScalar()) {
-                    const auto& text = node.Scalar();
+                    const auto text = node.Scalar();
                     if (text.starts_with("$$")) {
-                        auto literal = YAML::Clone(node);
-                        literal = text.substr(1);
-                        literal.SetTag(node.Tag());
-                        return literal;
-                    }
-                    if (text.starts_with('$')) {
+                        const auto tag = node.Tag();
+                        node = text.substr(1);
+                        node.SetTag(tag);
+                    } else if (text.starts_with('$')) {
                         const auto found = arguments.find(text.substr(1));
                         if (found == arguments.end()) Fail(node, "Unknown parameter '" + text + "' in template '" + name + "'");
-                        return YAML::Clone(found->second);
+                        node = YAML::Clone(found->second);
                     }
-                    return YAML::Clone(node);
-                }
-                YAML::Node result(node.Type());
-                result.SetTag(node.Tag());
-                if (node.IsSequence()) {
-                    for (const auto& child : node) result.push_back(Substitute(child, arguments, name));
+                } else if (node.IsSequence()) {
+                    for (auto child : node) Substitute(child, arguments, name, visited);
                 } else if (node.IsMap()) {
-                    for (const auto& entry : node) result.force_insert(YAML::Clone(entry.first), Substitute(entry.second, arguments, name));
+                    for (const auto& entry : node) Substitute(entry.second, arguments, name, visited);
                 }
-                return result;
             }
 
-            YAML::Node ExpandCall(const YAML::Node& call) {
+            YAML::Node ExpandCall(const YAML::Node& call, std::vector<std::pair<YAML::Node, bool>>& visited) {
                 CheckKeys(call, "use", "args");
                 if (!call["use"].IsScalar()) Fail(call, "Template 'use' must be a name");
                 const auto name = call["use"].Scalar();
@@ -73,9 +69,15 @@ namespace PresetHelpers::YAML_Helpers {
                     Fail(call, "Template '" + name + "' expects " + std::to_string(definition.parameters.size()) + " arguments in 'args'");
                 }
                 Arguments arguments;
-                for (std::size_t i = 0; i < definition.parameters.size(); ++i) arguments.emplace(definition.parameters[i], Expand(args[i]));
+                for (std::size_t i = 0; i < definition.parameters.size(); ++i) {
+                    Expand(args[i], visited);
+                    arguments.emplace(definition.parameters[i], args[i]);
+                }
                 activeCalls.push_back(name);
-                auto result = Expand(Substitute(definition.body, arguments, name));
+                auto result = YAML::Clone(definition.body);
+                std::vector<YAML::Node> substituted;
+                Substitute(result, arguments, name, substituted);
+                Expand(result);
                 activeCalls.pop_back();
                 return result;
             }
@@ -108,17 +110,27 @@ namespace PresetHelpers::YAML_Helpers {
                 }
             }
 
-            YAML::Node Expand(const YAML::Node& node) {
-                if (node.IsMap() && node["use"].IsDefined()) return ExpandCall(node);
-                if (!node.IsMap() && !node.IsSequence()) return YAML::Clone(node);
-                YAML::Node result(node.Type());
-                result.SetTag(node.Tag());
-                if (node.IsSequence()) {
-                    for (const auto& child : node) result.push_back(Expand(child));
-                } else {
-                    for (const auto& entry : node) result.force_insert(YAML::Clone(entry.first), Expand(entry.second));
+            void Expand(YAML::Node node, std::vector<std::pair<YAML::Node, bool>>& visited) {
+                const auto found = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) { return entry.first.is(node); });
+                if (found != visited.end()) {
+                    if (!found->second) Fail(node, "Circular YAML alias");
+                    return;
                 }
-                return result;
+                const auto index = visited.size();
+                visited.emplace_back(node, false);
+                if (node.IsMap() && std::as_const(node)["use"].IsDefined()) {
+                    node = ExpandCall(node, visited);
+                } else if (node.IsSequence()) {
+                    for (auto child : node) Expand(child, visited);
+                } else if (node.IsMap()) {
+                    for (const auto& entry : node) Expand(entry.second, visited);
+                }
+                visited[index].second = true;
+            }
+
+            void Expand(YAML::Node node) {
+                std::vector<std::pair<YAML::Node, bool>> visited;
+                Expand(node, visited);
             }
         };
     }
@@ -129,13 +141,10 @@ namespace PresetHelpers::YAML_Helpers {
     inline void ResolveTemplates(YAML::Node document, const std::string& source = {}) try {
         ResolveMergeKeys(document);
         if (!document.IsMap() || !std::as_const(document)["templates"].IsDefined()) return;
-        detail::TemplateExpander expander(std::as_const(document)["templates"]);
-        YAML::Node result(YAML::NodeType::Map);
-        result.SetTag(document.Tag());
-        for (const auto& entry : document) {
-            if (entry.first.IsScalar() && entry.first.Scalar() == "templates") continue;
-            result.force_insert(YAML::Clone(entry.first), expander.Expand(entry.second));
-        }
+        auto result = YAML::Clone(document);
+        detail::TemplateExpander expander(std::as_const(result)["templates"]);
+        result.remove("templates");
+        expander.Expand(result);
         document = result;
     } catch (const YAML::Exception& error) {
         if (source.empty()) throw;
