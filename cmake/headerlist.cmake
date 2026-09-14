@@ -1,5 +1,6 @@
 set(headers ${headers}
     include/CLibUtilsQTR/PresetHelpers/YAMLMerge.hpp
+    include/CLibUtilsQTR/PresetHelpers/YAMLTemplates.hpp
     include/CLibUtilsQTR/Signing.hpp
     include/CLibUtilsQTR/Signing/Authenticode.hpp
     include/CLibUtilsQTR/Signing/PeImage.hpp
