@@ -148,6 +148,8 @@ rows:
     }
     Reject("templates: {v: {parameters: [x], body: {<<: $x}}}\nx: {use: v, args: [4]}", "YAML merge requires");
     Reject("templates: {v: {parameters: [], body: &cycle [*cycle]}}\nx: {use: v, args: []}", "Circular YAML alias");
+    Reject("templates: {}\ntemplates: {}", "Duplicate top-level 'templates'");
+    Reject("templates: {}\ntemplates: {v: {parameters: [], body: 1}}\nx: {use: v, args: []}", "Duplicate top-level 'templates'");
     if (argc == 3) {
         std::size_t count = 0;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[1])) {

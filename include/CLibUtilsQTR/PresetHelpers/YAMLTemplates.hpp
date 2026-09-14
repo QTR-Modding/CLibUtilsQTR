@@ -144,6 +144,12 @@ namespace PresetHelpers::YAML_Helpers {
             ResolveMergeKeys(document);
             return;
         }
+        bool foundTemplates = false;
+        for (const auto& entry : document) {
+            if (!entry.first.IsScalar() || entry.first.Scalar() != "templates") continue;
+            if (foundTemplates) throw YAML::RepresentationException(entry.first.Mark(), "Duplicate top-level 'templates' section");
+            foundTemplates = true;
+        }
         auto result = YAML::Clone(document);
         detail::TemplateExpander expander(std::as_const(result)["templates"]);
         result.remove("templates");
