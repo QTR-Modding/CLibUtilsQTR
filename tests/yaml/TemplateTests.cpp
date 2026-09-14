@@ -110,6 +110,9 @@ values:
     Reject("templates: {v: {parameters: [], body: 1, body: 2}}", "Duplicate field");
     Reject("templates: {v: {parameters: [], body: 1}}\nx: {use: v, use: other, args: []}", "Duplicate field");
     Reject("templates: {v: {parameters: [], body: 1}}\nx: {use: v, args: [], args: [2]}", "Duplicate field");
+    Reject("templates: {ignore: {parameters: [x], body: 1}}\nx: {use: ignore, args: [{use: missing, args: []}]}", "Unknown YAML template");
+    Reject("templates: {ignore: {parameters: [x], body: 1}, loop: {parameters: [], body: {use: loop, args: []}}}\nx: {use: ignore, args: [{use: loop, args: []}]}", "Recursive");
+    Require(Expand("templates: {id: {parameters: [x], body: $x}}\nx: {use: id, args: [{use: id, args: [7]}]}")["x"].as<int>() == 7);
     if (argc == 3) {
         std::size_t count = 0;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[1])) {

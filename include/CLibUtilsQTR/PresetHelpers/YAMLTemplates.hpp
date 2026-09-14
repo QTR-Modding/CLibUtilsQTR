@@ -73,7 +73,7 @@ namespace PresetHelpers::YAML_Helpers {
                     Fail(call, "Template '" + name + "' expects " + std::to_string(definition.parameters.size()) + " arguments in 'args'");
                 }
                 Arguments arguments;
-                for (std::size_t i = 0; i < definition.parameters.size(); ++i) arguments.emplace(definition.parameters[i], args[i]);
+                for (std::size_t i = 0; i < definition.parameters.size(); ++i) arguments.emplace(definition.parameters[i], Expand(args[i]));
                 activeCalls.push_back(name);
                 auto result = Expand(Substitute(definition.body, arguments, name));
                 activeCalls.pop_back();

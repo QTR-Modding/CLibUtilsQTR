@@ -127,7 +127,7 @@ PresetHelpers::YAML_Helpers::ResolveTemplates(config, "preset.yml");
 The optional second argument adds a filename or other source label to errors. This public header needs only yaml-cpp and C++23; it has no Skyrim dependency. It resolves merge keys too, so replace an existing `ResolveMergeKeys()` call rather than calling both helpers.
 
 1. Define templates in the document's top-level `templates` mapping. Each definition has exactly `parameters` and `body`. Parameter names are nonempty, unique strings without a leading `$`.
-2. Calls have exactly `use` and `args`. Arguments are a sequence in parameter order; use `args: []` for a template with no parameters.
+2. Calls have exactly `use` and `args`. Arguments are a sequence in parameter order; use `args: []` for a template with no parameters. Calls in every argument are evaluated before the body, including arguments the body does not use.
 3. `$name` replaces a whole scalar value in the body. It does not interpolate part of a string or replace mapping keys. Arguments retain their YAML types, including null, zero, false, empty strings, sequences and mappings. Use `$$name` in a body to produce the literal string `$name`.
 4. Bodies can reuse anchors and merge keys, and call other templates. Arguments are copied, so calls produce independent results. A sequence body becomes a sequence value; it is not flattened into its surrounding list.
 5. Templates belong to one document. Expansion removes the top-level definitions. Without a `templates` key, ordinary `use` and `args` fields are untouched. With templates enabled, mappings containing `use` are reserved for calls throughout the document, including supplied arguments.
