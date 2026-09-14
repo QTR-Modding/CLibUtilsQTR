@@ -19,11 +19,16 @@ namespace PresetHelpers::YAML_Helpers {
             }
 
             static void CheckKeys(const YAML::Node& node, const char* first, const char* second) {
+                bool seenFirst = false;
+                bool seenSecond = false;
                 for (const auto& entry : node) {
                     if (!entry.first.IsScalar() ||
                         (entry.first.Scalar() != first && entry.first.Scalar() != second)) {
                         Fail(entry.first, "Expected only '" + std::string(first) + "' and '" + second + "'");
                     }
+                    auto& seen = entry.first.Scalar() == first ? seenFirst : seenSecond;
+                    if (seen) Fail(entry.first, "Duplicate field '" + entry.first.Scalar() + "'");
+                    seen = true;
                 }
             }
 

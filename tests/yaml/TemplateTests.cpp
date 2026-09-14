@@ -106,6 +106,10 @@ values:
     Reject("templates: {v: {parameters: [], body: {use: v, args: []}}}\nx: {use: v, args: []}", "Recursive");
     Reject("templates: {a: {parameters: [], body: {use: b, args: []}}, b: {parameters: [], body: {use: a, args: []}}}\nx: {use: a, args: []}", "Recursive");
     Reject("templates: {}\nx: &x [*x]", "Circular YAML alias");
+    Reject("templates: {v: {parameters: [], parameters: [], body: 1}}", "Duplicate field");
+    Reject("templates: {v: {parameters: [], body: 1, body: 2}}", "Duplicate field");
+    Reject("templates: {v: {parameters: [], body: 1}}\nx: {use: v, use: other, args: []}", "Duplicate field");
+    Reject("templates: {v: {parameters: [], body: 1}}\nx: {use: v, args: [], args: [2]}", "Duplicate field");
     if (argc == 3) {
         std::size_t count = 0;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[1])) {
