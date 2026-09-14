@@ -10,7 +10,7 @@ Signing is part of the dependency-free base package. Disable optional dependenci
 { "name": "clib-utils-qtr", "default-features": false }
 ```
 
-Follow [Getting Started](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started) to install the overlay and add its include directory. Without vcpkg, add this repository's `include` directory to your project. MSVC links Crypt32 through the header.
+Follow [Getting Started](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Getting-Started) to install the overlay and add its include directory. Without vcpkg, add this repository's `include` directory to your project. MSVC links Crypt32 and Advapi32 through the headers.
 
 If another library depends on this module, keep the same explicit dependency in the application's top-level manifest too. Vcpkg can otherwise expand the transitive dependency's default features and request Skyrim packages.
 
@@ -71,5 +71,7 @@ New keys created by the helper are non-exportable and tied to the Windows user/k
 ## What it checks
 
 Verification checks the Authenticode digest and pinned RSA key, then compares the loaded headers and executable sections with the signed file, accounting for relocations. Export resolution rejects forwarded, redirected and non-executable addresses. It does not require trusting a self-signed certificate as a Windows root.
+
+Pass an optional `SignatureDiagnostic*` to `VerifySignature`, `Get`, or `Resolve` to obtain the failed signature step and Windows error code (zero for a validation mismatch). File hashing does not require a system SIP provider. The digest parser accepts contiguous raw sections and an end-of-file certificate table; overlapping, gapped, and non-terminal certificate layouts are rejected.
 
 This is not a sandbox against arbitrary native code in the same process. It does not continuously monitor code after binding, certify DLL behavior, or prevent antivirus warnings. Choose the trusted key deliberately; each provider keeps its own key and client failure policy.
