@@ -26,8 +26,9 @@ inline int VerifyFileCommandLine(int argc, wchar_t** argv, const SigningKeyHash*
         std::puts("Cannot read candidate.");
         return 3;
     }
-    if (!VerifySignature(file, key)) {
-        std::puts("Signature rejected.");
+    SignatureDiagnostic diagnostic;
+    if (!VerifySignature(file, key, &diagnostic)) {
+        std::fwprintf(stderr, L"Signature rejected: %ls (error 0x%08lX).\n", diagnostic.stage, diagnostic.error);
         return 4;
     }
     std::puts("Verified signing key and file digest.");

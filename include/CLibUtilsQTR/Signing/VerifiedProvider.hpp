@@ -23,7 +23,8 @@ public:
     VerifiedProvider& operator=(const VerifiedProvider&) = delete;
     ~VerifiedProvider() { if (module_) FreeLibrary(module_); }
 
-    BindingError Bind(HMODULE candidate, const SigningKeyHash& key) {
+    BindingError Bind(HMODULE candidate, const SigningKeyHash& key, SignatureDiagnostic* diagnostic = nullptr) {
+        if (diagnostic) *diagnostic = {};
         if (attempted_) return BindingError::Inspection;
         attempted_ = true;
         if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
@@ -31,7 +32,7 @@ public:
         std::array<wchar_t, 32768> path{};
         const auto length = GetModuleFileNameW(module_, path.data(), static_cast<DWORD>(path.size()));
         if (!length || length >= path.size() || !file_.Open(path.data())) return BindingError::Inspection;
-        if (!VerifySignature(file_, key)) return BindingError::Signature;
+        if (!VerifySignature(file_, key, diagnostic)) return BindingError::Signature;
         const PeImage image(file_.bytes);
         const auto* nt = image.Headers();
         const auto* dos = image.At<IMAGE_DOS_HEADER>(0);

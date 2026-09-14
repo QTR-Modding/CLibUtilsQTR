@@ -2,7 +2,7 @@
 
 // Copyright (c) 2026 Quantumyilmaz. MIT License.
 
-#include "PeImage.hpp"
+#include "PeDigest.hpp"
 
 #include <wincrypt.h>
 #include <mssip.h>
@@ -81,73 +81,73 @@ struct SignatureMessage {
 // Verify an embedded SHA-256 Authenticode signature against our pinned RSA
 // public key, not Windows' machine-wide publisher trust. No root-store edits,
 // network lookup, expired test-certificate exception, or subject-name trust.
-inline bool VerifySignature(const SignedFile& file, const SigningKeyHash& expectedKey) {
+inline bool VerifySignature(const SignedFile& file, const SigningKeyHash& expectedKey,
+    SignatureDiagnostic* diagnostic = nullptr) {
+    if (diagnostic) *diagnostic = {};
     const PeImage image(file.bytes);
     const auto* nt = image.Headers();
-    if (!nt) return false;
+    if (!nt) return SignatureFailure(diagnostic, L"PE headers");
     const auto& certificate = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY];
     const auto* entry = image.At<WIN_CERTIFICATE>(certificate.VirtualAddress);
     constexpr std::size_t prefix = offsetof(WIN_CERTIFICATE, bCertificate);
     if (!certificate.VirtualAddress || !entry || certificate.Size < prefix ||
         entry->dwLength <= prefix || entry->dwLength > certificate.Size ||
         entry->wRevision != WIN_CERT_REVISION_2_0 || entry->wCertificateType != WIN_CERT_TYPE_PKCS_SIGNED_DATA ||
-        !image.At<BYTE>(certificate.VirtualAddress, certificate.Size)) return false;
+        !image.At<BYTE>(certificate.VirtualAddress, certificate.Size))
+        return SignatureFailure(diagnostic, L"embedded signature layout");
 
     CRYPT_DATA_BLOB blob{entry->dwLength - static_cast<DWORD>(prefix), const_cast<BYTE*>(entry->bCertificate)};
     SignatureMessage signature;
     if (!CryptQueryObject(CERT_QUERY_OBJECT_BLOB, &blob, CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED,
             CERT_QUERY_FORMAT_FLAG_BINARY, 0, nullptr, nullptr, nullptr, &signature.store,
-            &signature.message, nullptr)) return false;
+            &signature.message, nullptr)) return SignatureFailure(diagnostic, L"CryptQueryObject", GetLastError());
     DWORD signerCount{}, countSize = sizeof(signerCount);
-    if (!CryptMsgGetParam(signature.message, CMSG_SIGNER_COUNT_PARAM, 0, &signerCount, &countSize) ||
-        signerCount != 1) return false;
+    if (!CryptMsgGetParam(signature.message, CMSG_SIGNER_COUNT_PARAM, 0, &signerCount, &countSize))
+        return SignatureFailure(diagnostic, L"signer count", GetLastError());
+    if (signerCount != 1) return SignatureFailure(diagnostic, L"single signer required");
     std::vector<BYTE> signerInfo;
-    if (!signature.Parameter(CMSG_SIGNER_CERT_INFO_PARAM, signerInfo)) return false;
+    if (!signature.Parameter(CMSG_SIGNER_CERT_INFO_PARAM, signerInfo))
+        return SignatureFailure(diagnostic, L"signer info", GetLastError());
     signature.signer = CertFindCertificateInStore(signature.store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
         0, CERT_FIND_SUBJECT_CERT, signerInfo.data(), nullptr);
-    if (!signature.signer) return false;
+    if (!signature.signer) return SignatureFailure(diagnostic, L"signer certificate", GetLastError());
     const auto& publicKey = signature.signer->pCertInfo->SubjectPublicKeyInfo;
     SigningKeyHash keyHash{};
     DWORD hashSize = static_cast<DWORD>(keyHash.size());
-    if (std::strcmp(publicKey.Algorithm.pszObjId, szOID_RSA_RSA) != 0 || publicKey.PublicKey.cUnusedBits != 0 ||
-        !CryptHashCertificate2(L"SHA256", 0, nullptr, publicKey.PublicKey.pbData, publicKey.PublicKey.cbData,
-            keyHash.data(), &hashSize) || hashSize != keyHash.size() || keyHash != expectedKey) return false;
+    if (std::strcmp(publicKey.Algorithm.pszObjId, szOID_RSA_RSA) != 0 || publicKey.PublicKey.cUnusedBits != 0)
+        return SignatureFailure(diagnostic, L"RSA key format");
+    if (!CryptHashCertificate2(L"SHA256", 0, nullptr, publicKey.PublicKey.pbData, publicKey.PublicKey.cbData,
+            keyHash.data(), &hashSize)) return SignatureFailure(diagnostic, L"public-key hash", GetLastError());
+    if (hashSize != keyHash.size() || keyHash != expectedKey)
+        return SignatureFailure(diagnostic, L"trusted signing key");
     if (!CryptMsgControl(signature.message, 0, CMSG_CTRL_VERIFY_SIGNATURE,
-            signature.signer->pCertInfo)) return false;
+            signature.signer->pCertInfo)) return SignatureFailure(diagnostic, L"RSA signature", GetLastError());
 
     std::vector<BYTE> contentType, content, algorithm;
-    if (!signature.Parameter(CMSG_INNER_CONTENT_TYPE_PARAM, contentType) ||
-        contentType.back() != 0 || std::strcmp(reinterpret_cast<const char*>(contentType.data()),
-            SPC_INDIRECT_DATA_OBJID) != 0 ||
-        !signature.Parameter(CMSG_SIGNER_HASH_ALGORITHM_PARAM, algorithm) ||
+    if (!signature.Parameter(CMSG_INNER_CONTENT_TYPE_PARAM, contentType))
+        return SignatureFailure(diagnostic, L"signed content type", GetLastError());
+    if (contentType.back() != 0 || std::strcmp(reinterpret_cast<const char*>(contentType.data()),
+            SPC_INDIRECT_DATA_OBJID) != 0) return SignatureFailure(diagnostic, L"Authenticode content required");
+    if (!signature.Parameter(CMSG_SIGNER_HASH_ALGORITHM_PARAM, algorithm))
+        return SignatureFailure(diagnostic, L"signer hash algorithm", GetLastError());
+    if (algorithm.size() < sizeof(CRYPT_ALGORITHM_IDENTIFIER) ||
         std::strcmp(reinterpret_cast<CRYPT_ALGORITHM_IDENTIFIER*>(algorithm.data())->pszObjId,
-            szOID_NIST_sha256) != 0 ||
-        !signature.Parameter(CMSG_CONTENT_PARAM, content)) return false;
+            szOID_NIST_sha256) != 0) return SignatureFailure(diagnostic, L"SHA-256 signature required");
+    if (!signature.Parameter(CMSG_CONTENT_PARAM, content))
+        return SignatureFailure(diagnostic, L"signed content", GetLastError());
     DWORD decodedSize{};
     if (!CryptDecodeObjectEx(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, SPC_INDIRECT_DATA_OBJID,
             content.data(), static_cast<DWORD>(content.size()), CRYPT_DECODE_ALLOC_FLAG, nullptr,
-            &signature.signedDigest, &decodedSize)) return false;
+            &signature.signedDigest, &decodedSize)) return SignatureFailure(diagnostic, L"decode signed digest", GetLastError());
     const auto* signedDigest = signature.signedDigest;
     if (std::strcmp(signedDigest->Data.pszObjId, SPC_PE_IMAGE_DATA_OBJID) != 0 ||
         std::strcmp(signedDigest->DigestAlgorithm.pszObjId, szOID_NIST_sha256) != 0 ||
-        signedDigest->Digest.cbData != 32) return false;
+        signedDigest->Digest.cbData != 32) return SignatureFailure(diagnostic, L"SHA-256 PE digest required");
 
-    GUID peSubject{};
-    if (!CryptSIPRetrieveSubjectGuid(file.path.c_str(), file.handle, &peSubject)) return false;
-    SIP_SUBJECTINFO subject{};
-    subject.cbSize = sizeof(subject);
-    subject.pgSubjectType = &peSubject;
-    subject.hFile = file.handle;
-    subject.pwsFileName = file.path.c_str();
-    subject.dwEncodingType = X509_ASN_ENCODING | PKCS_7_ASN_ENCODING;
-    subject.DigestAlgorithm.pszObjId = const_cast<char*>(szOID_NIST_sha256);
-    DWORD digestSize{};
-    if (!CryptSIPCreateIndirectData(&subject, &digestSize, nullptr) ||
-        digestSize < sizeof(SIP_INDIRECT_DATA) || digestSize > 1024 * 1024) return false;
-    std::vector<BYTE> digest(digestSize);
-    auto* computed = reinterpret_cast<SIP_INDIRECT_DATA*>(digest.data());
-    return CryptSIPCreateIndirectData(&subject, &digestSize, computed) && computed->Digest.cbData == 32 &&
-        std::memcmp(computed->Digest.pbData, signedDigest->Digest.pbData, 32) == 0;
+    std::array<BYTE, 32> computed{};
+    if (!ComputePeDigest(file.bytes, computed, diagnostic)) return false;
+    return std::memcmp(computed.data(), signedDigest->Digest.pbData, computed.size()) == 0 ||
+        SignatureFailure(diagnostic, L"file digest mismatch");
 }
 
 }

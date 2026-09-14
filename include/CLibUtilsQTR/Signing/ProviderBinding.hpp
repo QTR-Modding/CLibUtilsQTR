@@ -15,14 +15,14 @@ public:
     ProviderBinding(std::wstring moduleName, SigningKeyHash key) :
         moduleName_(std::move(moduleName)), key_(key) {}
 
-    VerifiedProvider* Get(BindingError& error) {
+    VerifiedProvider* Get(BindingError& error, SignatureDiagnostic* diagnostic = nullptr) {
         std::lock_guard lock(mutex_);
-        return GetLocked(error);
+        return GetLocked(error, diagnostic);
     }
 
-    FARPROC Resolve(std::string_view name, BindingError& error) {
+    FARPROC Resolve(std::string_view name, BindingError& error, SignatureDiagnostic* diagnostic = nullptr) {
         std::lock_guard lock(mutex_);
-        auto* provider = GetLocked(error);
+        auto* provider = GetLocked(error, diagnostic);
         if (!provider) return nullptr;
         if (const auto found = exports_.find(name); found != exports_.end()) return found->second;
         const auto function = provider->Resolve(name, error);
@@ -32,13 +32,14 @@ public:
     }
 
 private:
-    VerifiedProvider* GetLocked(BindingError& error) {
+    VerifiedProvider* GetLocked(BindingError& error, SignatureDiagnostic* diagnostic) {
+        if (diagnostic) *diagnostic = {};
         error = BindingError::None;
         if (provider_) return provider_.get();
         auto module = FindProvider(moduleName_, error);
         if (error != BindingError::None) return nullptr;
         auto candidate = std::make_unique<VerifiedProvider>();
-        error = candidate->Bind(module, key_);
+        error = candidate->Bind(module, key_, diagnostic);
         if (error != BindingError::None) return nullptr;
         // Export caches may be used during client teardown. Never unload code
         // whose function pointers have been handed to the caller.
