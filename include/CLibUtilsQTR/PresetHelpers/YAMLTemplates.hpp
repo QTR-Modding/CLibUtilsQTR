@@ -77,6 +77,7 @@ namespace PresetHelpers::YAML_Helpers {
                 auto result = YAML::Clone(definition.body);
                 std::vector<YAML::Node> substituted;
                 Substitute(result, arguments, name, substituted);
+                PresetHelpers::YAML_Helpers::ResolveMergeKeys(result);
                 Expand(result);
                 activeCalls.pop_back();
                 return result;
@@ -139,11 +140,14 @@ namespace PresetHelpers::YAML_Helpers {
     // Throws YAML::Exception on invalid input; discard the document on failure.
     // https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Configuration-and-Strings#parameterized-yaml-templates
     inline void ResolveTemplates(YAML::Node document, const std::string& source = {}) try {
-        ResolveMergeKeys(document);
-        if (!document.IsMap() || !std::as_const(document)["templates"].IsDefined()) return;
+        if (!document.IsMap() || !std::as_const(document)["templates"].IsDefined()) {
+            ResolveMergeKeys(document);
+            return;
+        }
         auto result = YAML::Clone(document);
         detail::TemplateExpander expander(std::as_const(result)["templates"]);
         result.remove("templates");
+        ResolveMergeKeys(result);
         expander.Expand(result);
         document = result;
     } catch (const YAML::Exception& error) {

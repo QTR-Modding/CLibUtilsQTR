@@ -127,6 +127,27 @@ alias: *outer
     Require(aliases["rows"][0]["alias"]["v"].as<int>() == 9);
     Require(aliases["rows"][1]["alias"]["v"].as<int>() == 2);
     Require(aliases["base"].is(aliases["alias"]));
+    auto mergedArgument = Expand(R"(
+base: &defaults {value: 4, other: 7, empty: nonempty}
+templates:
+  defaults:
+    parameters: []
+    body: *defaults
+  setting:
+    parameters: [defaults]
+    body: {<<: $defaults, value: 0, empty: null}
+rows:
+- {use: setting, args: [*defaults]}
+- {use: setting, args: [{use: defaults, args: []}]}
+)");
+    for (const auto& row : mergedArgument["rows"]) {
+        Require(row["value"].as<int>() == 0);
+        Require(row["empty"].IsNull());
+        Require(row["other"].as<int>() == 7);
+        Require(!row["<<"]);
+    }
+    Reject("templates: {v: {parameters: [x], body: {<<: $x}}}\nx: {use: v, args: [4]}", "YAML merge requires");
+    Reject("templates: {v: {parameters: [], body: &cycle [*cycle]}}\nx: {use: v, args: []}", "Circular YAML alias");
     if (argc == 3) {
         std::size_t count = 0;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[1])) {
