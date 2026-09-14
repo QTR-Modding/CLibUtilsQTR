@@ -72,7 +72,11 @@ struct SignatureMessage {
 
     bool Parameter(DWORD param, std::vector<BYTE>& output) const {
         DWORD size{};
-        if (!CryptMsgGetParam(message, param, 0, nullptr, &size) || !size || size > 1024 * 1024) return false;
+        if (!CryptMsgGetParam(message, param, 0, nullptr, &size)) return false;
+        if (!size || size > 1024 * 1024) {
+            SetLastError(ERROR_SUCCESS);
+            return false;
+        }
         output.resize(size);
         return CryptMsgGetParam(message, param, 0, output.data(), &size) != FALSE;
     }
