@@ -31,9 +31,15 @@ void CompareWindows(const S::SignedFile& file) {
 
 int wmain(int argc, wchar_t** argv) {
     if (argc != 3) return 1;
+    const bool oracle = std::wstring_view(argv[2]) == L"oracle";
+    const auto ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (oracle && ntdll && GetProcAddress(ntdll, "wine_get_version")) {
+        std::cout << "Skipping the native Windows SIP oracle under Wine\n";
+        return 77;
+    }
     S::SignedFile original;
     Require(original.Open(argv[1]), "Read signed fixture");
-    if (std::wstring_view(argv[2]) == L"oracle") CompareWindows(original);
+    if (oracle) CompareWindows(original);
     S::SignatureDiagnostic diagnostic;
     Require(S::VerifySignature(original, testKey, &diagnostic), "Signed fixture rejected");
     auto wrongKey = testKey;
