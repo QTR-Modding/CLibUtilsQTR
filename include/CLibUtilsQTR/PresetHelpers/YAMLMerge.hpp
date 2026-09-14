@@ -11,7 +11,10 @@ namespace PresetHelpers::YAML_Helpers {
                 (key.Scalar() == "<<" && key.Tag() == "?"));
         }
 
-        inline void ResolveMergeKeys(YAML::Node node, std::vector<std::pair<YAML::Node, bool>>& visited) {
+        // Root discovery follows merge sources only; deferred template definitions are resolved after substitution.
+        inline void ResolveMergeKeys(YAML::Node node, std::vector<std::pair<YAML::Node, bool>>& visited,
+                                     bool recursive = true, const YAML::Node* deferred = nullptr) {
+            if (deferred && node.is(*deferred)) return;
             if (!node.IsMap() && !node.IsSequence()) return;
             const auto found = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) {
                 return entry.first.is(node);
@@ -23,12 +26,12 @@ namespace PresetHelpers::YAML_Helpers {
             const auto index = visited.size();
             visited.emplace_back(node, false);
             if (node.IsSequence()) {
-                for (auto child : node) ResolveMergeKeys(child, visited);
+                for (auto child : node) ResolveMergeKeys(child, visited, recursive, deferred);
             } else {
                 std::vector<YAML::Node> sources;
                 bool hasMerge = false;
                 for (const auto& entry : node) {
-                    ResolveMergeKeys(entry.second, visited);
+                    if (recursive || IsMergeKey(entry.first)) ResolveMergeKeys(entry.second, visited, recursive, deferred);
                     if (!IsMergeKey(entry.first)) continue;
                     if (hasMerge) throw YAML::RepresentationException(entry.first.Mark(), "Use a sequence for multiple YAML merge sources");
                     hasMerge = true;

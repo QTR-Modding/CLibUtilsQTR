@@ -11,6 +11,7 @@ namespace PresetHelpers::YAML_Helpers {
                 YAML::Node body;
             };
             using Arguments = std::unordered_map<std::string, YAML::Node>;
+            YAML::Node templateSection;
             std::unordered_map<std::string, Definition> definitions;
             std::vector<std::string> activeCalls;
 
@@ -84,7 +85,7 @@ namespace PresetHelpers::YAML_Helpers {
             }
 
         public:
-            explicit TemplateExpander(const YAML::Node& templates) {
+            explicit TemplateExpander(const YAML::Node& templates) : templateSection(templates) {
                 if (!templates.IsMap()) Fail(templates, "YAML 'templates' must be a mapping");
                 for (const auto& entry : templates) {
                     if (!entry.first.IsScalar() || entry.first.Scalar().empty()) Fail(entry.first, "A YAML template needs a nonempty name");
@@ -112,6 +113,7 @@ namespace PresetHelpers::YAML_Helpers {
             }
 
             void Expand(YAML::Node node, std::vector<std::pair<YAML::Node, bool>>& visited) {
+                if (node.is(templateSection)) return;
                 const auto found = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) { return entry.first.is(node); });
                 if (found != visited.end()) {
                     if (!found->second) Fail(node, "Circular YAML alias");
@@ -140,7 +142,7 @@ namespace PresetHelpers::YAML_Helpers {
     // Throws YAML::Exception on invalid input; discard the document on failure.
     // https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Configuration-and-Strings#parameterized-yaml-templates
     inline void ResolveTemplates(YAML::Node document, const std::string& source = {}) try {
-        if (!document.IsMap() || !std::as_const(document)["templates"].IsDefined()) {
+        if (!document.IsMap()) {
             ResolveMergeKeys(document);
             return;
         }
@@ -150,10 +152,18 @@ namespace PresetHelpers::YAML_Helpers {
             if (foundTemplates) throw YAML::RepresentationException(entry.first.Mark(), "Duplicate top-level 'templates' section");
             foundTemplates = true;
         }
+        std::vector<std::pair<YAML::Node, bool>> visited;
+        detail::ResolveMergeKeys(document, visited, false);
+        if (!std::as_const(document)["templates"].IsDefined()) {
+            ResolveMergeKeys(document);
+            return;
+        }
         auto result = YAML::Clone(document);
-        detail::TemplateExpander expander(std::as_const(result)["templates"]);
+        const auto templates = std::as_const(result)["templates"];
+        detail::TemplateExpander expander(templates);
         result.remove("templates");
-        ResolveMergeKeys(result);
+        visited.clear();
+        detail::ResolveMergeKeys(result, visited, true, &templates);
         expander.Expand(result);
         document = result;
     } catch (const YAML::Exception& error) {

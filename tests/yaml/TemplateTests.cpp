@@ -150,6 +150,27 @@ rows:
     Reject("templates: {v: {parameters: [], body: &cycle [*cycle]}}\nx: {use: v, args: []}", "Circular YAML alias");
     Reject("templates: {}\ntemplates: {}", "Duplicate top-level 'templates'");
     Reject("templates: {}\ntemplates: {v: {parameters: [], body: 1}}\nx: {use: v, args: []}", "Duplicate top-level 'templates'");
+    auto inheritedTemplates = Expand(R"(
+common: &common
+  templates:
+    setting:
+      parameters: [defaults]
+      body: {<<: $defaults, value: 0}
+<<: *common
+row: {use: setting, args: [{value: 5, extra: 7}]}
+)");
+    Require(!inheritedTemplates["templates"]);
+    Require(inheritedTemplates["row"]["value"].as<int>() == 0);
+    Require(inheritedTemplates["row"]["extra"].as<int>() == 7);
+    auto rootPriority = Expand(R"(
+first: &first {templates: {v: {parameters: [], body: first}}}
+second: &second {templates: {v: {parameters: [], body: second}}}
+<<: [*first, *second]
+x: {use: v, args: []}
+)");
+    Require(rootPriority["x"].Scalar() == "first");
+    Require(Expand("<<: {templates: {v: {parameters: [], body: inherited}}}\ntemplates: {v: {parameters: [], body: explicit}}\nx: {use: v, args: []}")["x"].Scalar() == "explicit");
+    Reject("&root {<<: *root}", "Circular YAML alias");
     if (argc == 3) {
         std::size_t count = 0;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[1])) {
