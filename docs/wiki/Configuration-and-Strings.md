@@ -1,5 +1,49 @@
 # Configuration and strings
 
+## Translations
+
+`Translator` reads a translation file and uses your built-in text for missing entries:
+
+```cpp
+#include <CLibUtilsQTR/Translator.hpp>
+
+clib_utilsQTR::Translator text({
+    {"$Greeting", "Hello {}"},
+    {"$Close", "Close"}
+});
+text.Load("Interface/Translations/MyMod_GERMAN.txt");
+const auto greeting = text.Format("$Greeting", "Alex");
+const auto closeLabel = text.Get("$Close");
+```
+
+This module uses the `json` feature, included by default. It reads loose files, not BSA archives, and does not use CommonLib or the game's translator. Your mod chooses the language, file path, and default strings; nothing is registered with Skyrim.
+
+TXT files use Skyrim's `$key`, a literal tab, then the translation. Lines not starting with `$` are ignored. Like Skyrim's reader, the last tab separates the key and value. Values support `\n`, `\t`, and `\\`; other backslash sequences stay unchanged. Blank lines are allowed, and there is no fixed line-length limit.
+
+JSON files contain an object of string values:
+
+```json
+{
+  "$Greeting": "Hallo {}",
+  "$Close": "Schliessen"
+}
+```
+
+Both formats accept UTF-8 (with or without a BOM) and UTF-16LE with a BOM. A BOM is the encoding marker at the start of a file. Returned text is UTF-8. JSON uses normal JSON escaping, without a second unescaping pass. Keys are case-sensitive; JSON keys do not need a `$` prefix. Empty translations are kept. Duplicate keys report an error and keep the first value.
+
+To receive errors, pass a function as the second constructor argument:
+
+```cpp
+clib_utilsQTR::Translator text({{"$Close", "Close"}},
+    [](std::string_view error) { logger::warn("{}", error); });
+```
+
+The function receives file/line or key details. It runs synchronously and should not throw or modify the translator. Without it, diagnostics are discarded. `Load()` returns false if any error occurs. Valid entries survive individual entry errors; unreadable files, invalid encodings, or invalid JSON leave only the defaults. Each load replaces the previous translations, so switching languages cannot retain text from the old language.
+
+`Get()` returns the translation, then the built-in default, then the key itself if neither exists. Its string view remains valid until the translator is reloaded or destroyed; an unknown key's view instead has the caller's key lifetime. `Format()` returns an owned string using C++ format placeholders such as `{}` and `{0}`. An invalid translated format reports an error and retries the default; if that also fails, it returns the default literally. This does not expand Skyrim's nested `$key{...}` translation syntax.
+
+Load before using the translator from other threads, or protect reloads and readers with your own synchronization. Concurrent reads are fine if your error callback also supports them.
+
 ## JSON fields with defaults
 
 A `Field` associates a JSON property name with a C++ value:

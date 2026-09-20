@@ -14,6 +14,7 @@
 #include "StringHelpers.hpp"
 #include "Tasker.hpp"
 #include "Ticker.hpp"
+#include "Translator.hpp"
 #include "PresetHelpers/Config.hpp"
 #include "PresetHelpers/PresetHelpersTXT.hpp"
 #include "PresetHelpers/PresetHelpersYAML.hpp"

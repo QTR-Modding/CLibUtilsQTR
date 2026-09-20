@@ -7,7 +7,7 @@ Start with [Getting Started](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Ge
 | What you want to do | Guide |
 | --- | --- |
 | Queue animations | [Animations](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Animations) |
-| Read JSON fields, work with strings and preset values, or resolve YAML merge keys | [Configuration and strings](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Configuration-and-Strings) |
+| Load translations, read JSON fields, work with strings and preset values, or resolve YAML merge keys | [Configuration and strings](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Configuration-and-Strings) |
 | Detect incorrect locking | [Debug locks](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Debug-Locks) |
 | Create and track dynamic forms | [Dynamic form tracking](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Dynamic-Form-Tracking) |
 | Resolve forms and load form groups in C++ | [Forms and groups](https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Forms-and-Groups) |
