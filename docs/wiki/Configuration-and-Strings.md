@@ -97,7 +97,9 @@ The helper updates the document in place and preserves aliases. It accepts scala
 
 ## Parameterized YAML templates
 
-A template is a reusable YAML value with named inputs. Each `use` call replaces itself with a copy of the template's `body`:
+Use a template when several entries share the same structure but need different values. Define the structure once, give its inputs names, and supply the values in each call.
+
+### Define a template and use it
 
 ```yaml
 templates:
@@ -108,29 +110,102 @@ templates:
       value: $value
 
 settings:
-- use: setting
-  args: [distance, 100]
-- use: setting
-  args: [enabled, false]
+  - use: setting
+    args: [distance, 100]
+  - use: setting
+    args: [enabled, false]
 ```
 
-The resulting `settings` contains `{name: distance, value: 100}` and `{name: enabled, value: false}`. This is a QTR extension, not standard YAML syntax. Applications opt in with:
+`setting` is the template's name. `parameters` names its inputs, and `body` is the value it produces. Inside the body, `$name` and `$value` mark where the supplied values go.
+
+`use: setting` calls the template. `args` supplies values in the same order as `parameters`: the first call assigns `distance` to `name` and `100` to `value`.
+
+After expansion, the application reads:
+
+```yaml
+settings:
+  - name: distance
+    value: 100
+  - name: enabled
+    value: false
+```
+
+The helper removes the top-level `templates` section and replaces each call with its expanded body. Each call produces a separate copy.
+
+### Supply arguments
+
+1. Each definition has exactly two fields: `parameters` and `body`. Each call has exactly two fields: `use` and `args`.
+2. `args` must be a list with one value for each parameter. For a template with no inputs, write `parameters: []` in the definition and `args: []` in the call.
+3. Template names and parameter names must be nonempty. Parameter names must be unique within their definition and are written without the `$` prefix.
+4. An argument can be a string, number, boolean, null, list, or mapping (a group of key/value fields). Its type is preserved: passing `false`, `0`, or `null` keeps that value. Quote a number such as `"123"` when it should remain a string.
+
+A parameter replaces a **whole value**. For example, `name: $name` works. `name: "Item $name"` remains the literal text `Item $name`; it does not insert the argument into that text. Parameter substitution applies to values, not field names.
+
+To produce a literal value starting with `$`, double the first dollar sign in the body: `name: $$name` produces `name: $name`. Write `name: $$price USD` to produce the literal `$price USD`; a value starting with a single `$` is treated as a parameter reference.
+
+### Combine arguments with YAML merges
+
+A body can use anchors and merge keys. Here, the `defaults` argument supplies fields to merge into the result:
+
+```yaml
+templates:
+  timedSetting:
+    parameters: [defaults, duration]
+    body:
+      <<: $defaults
+      duration: $duration
+
+settings:
+  - use: timedSetting
+    args: [{duration: 6, sound: Crack}, 2]
+```
+
+The result is:
+
+```yaml
+settings:
+  - duration: 2
+    sound: Crack
+```
+
+Arguments are substituted before the body's merge keys are resolved. The explicit `duration` therefore overrides the duration inherited from `defaults`, using the [merge rules above](#yaml-templates-with-merge-keys).
+
+Anchors and aliases within a body still refer to the same copied value. Separate calls have separate copies. A body can also be a list; its call is replaced by that list as a single value. If the call is already inside another list, the result is a nested list.
+
+### Call another template
+
+A body or an argument can contain another `use` call. For example, given the `setting` template above, add this definition beside it:
+
+```yaml
+  distanceSetting:
+    parameters: [distance]
+    body:
+      use: setting
+      args: [distance, $distance]
+```
+
+Calling `{use: distanceSetting, args: [100]}` produces `{name: distance, value: 100}`.
+
+Calls inside arguments are expanded before the receiving template's body, including arguments the body does not use. A body cannot call itself, directly or through another template. A finite nested call supplied as an argument, such as an identity template receiving the result of another identity call, is allowed.
+
+### Where definitions and calls belong
+
+Keep definitions in one top-level `templates` mapping. Templates belong to that YAML document. A root-level YAML merge can supply this mapping too: an explicit `templates` field wins over an inherited one, and the first merge source wins over later sources. Duplicate explicit `templates` fields and duplicate template names are errors.
+
+When `templates` is present, the helper treats mappings containing `use` as calls throughout the document, including arguments. Reserve that field name for template calls in these documents. When `templates` is absent, the helper resolves ordinary YAML merges and leaves `use` and `args` as ordinary fields.
+
+### Enable templates in C++
+
+Applications enable this QTR syntax by calling `ResolveTemplates` after loading YAML and before reading configuration fields. Use C++23 and yaml-cpp, and include the public header:
 
 ```cpp
 #include <CLibUtilsQTR/PresetHelpers/YAMLTemplates.hpp>
 
 auto config = YAML::LoadFile("preset.yml");
 PresetHelpers::YAML_Helpers::ResolveTemplates(config, "preset.yml");
-// Read config normally here.
+// Read the expanded config here.
 ```
 
-The optional second argument adds a filename or other source label to errors. This public header needs only yaml-cpp and C++23; it has no Skyrim dependency. It resolves merge keys too, so replace an existing `ResolveMergeKeys()` call rather than calling both helpers.
+The second argument is optional and adds the filename to error messages. `ResolveTemplates` also resolves YAML merge keys, so it replaces an existing `ResolveMergeKeys` call. Expansion happens once during configuration loading.
 
-1. Define templates in the document's top-level `templates` mapping, directly or through a root merge. Root merges follow the same explicit-key and source-order precedence described above. Duplicate explicit `templates` sections are rejected. Each definition has exactly `parameters` and `body`. Parameter names are nonempty, unique strings without a leading `$`.
-2. Calls have exactly `use` and `args`. Arguments are a sequence in parameter order; use `args: []` for a template with no parameters. Calls in every argument are evaluated before the body, including arguments the body does not use.
-3. `$name` replaces a whole scalar value in the body. It does not interpolate part of a string or replace mapping keys. Arguments retain their YAML types, including null, zero, false, empty strings, sequences and mappings. Use `$$name` in a body to produce the literal string `$name`.
-4. Bodies can reuse anchors and merge keys, and call other templates. Body merges are resolved after parameter substitution, so a mapping argument can be used as `<<: $defaults`. Arguments are copied, so calls produce independent results. Anchors and aliases within each body keep referring to the same copied node. A sequence body becomes a sequence value; it is not flattened into its surrounding list.
-5. Templates belong to one document. Expansion removes the top-level definitions. Without a `templates` key, ordinary `use` and `args` fields are untouched. With templates enabled, mappings containing `use` are reserved for calls throughout the document, including supplied arguments.
-6. Invalid definitions, unknown templates or parameters, wrong argument counts, circular aliases and recursive calls throw `YAML::Exception`. Template bodies are expanded when called; errors in unused bodies are not evaluated. Discard the document on failure and report the exception through your application's config error handling.
-
-Expansion runs during configuration loading. Applications consume ordinary nodes afterward; no template machinery is needed at runtime.
+Catch `YAML::Exception` in the application's configuration error handler and discard the document if expansion fails. Errors include malformed definitions or calls, duplicate fields, unknown template or parameter names, incorrect argument counts, recursive calls, and circular YAML aliases. Definition structure is checked when loading the template bank; body contents are expanded and checked when that template is called.
