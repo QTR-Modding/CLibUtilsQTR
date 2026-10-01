@@ -17,7 +17,7 @@
       ]
     },
     "json": {
-      "description": "Game-independent JSON preset fields and getters.",
+      "description": "Game-independent JSON preset fields, getters, and TXT/JSON translations.",
       "dependencies": [
         "rapidjson"
       ]

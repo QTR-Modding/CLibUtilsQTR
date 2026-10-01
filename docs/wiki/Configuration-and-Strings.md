@@ -1,5 +1,99 @@
 # Configuration and strings
 
+## Translations
+
+`Translator` loads translated text from a TXT or JSON file. You supply the default text and choose which language file to load. Missing translations use your defaults.
+
+### Start with a TXT file
+
+Create `Interface/Translations/MyMod_GERMAN.txt` with these two lines. Separate each key (such as `$Greeting`) from its text with a **Tab**, not spaces. The `{}` placeholder will be replaced with a value from your code.
+
+```text
+$Greeting	Hallo {}
+$Close	Schliessen
+```
+
+In your mod, define the English defaults and load the file:
+
+```cpp
+#include <CLibUtilsQTR/Translator.hpp>
+
+clib_utilsQTR::Translator text({
+    {"$Greeting", "Hello {}"},
+    {"$Close", "Close"}
+});
+text.Load("Interface/Translations/MyMod_GERMAN.txt");
+const auto greeting = text.Format("$Greeting", "Alex");  // "Hallo Alex"
+const auto closeLabel = text.Get("$Close");              // "Schliessen"
+```
+
+Use `Get()` for plain text and `Format()` when you need to fill in placeholders. Without the file, these calls return `"Hello Alex"` and `"Close"` instead.
+
+The module is included in QTR's default installation through the `json` feature. It reads loose files, not BSA archives. It does not use CommonLib or register text with Skyrim's translator.
+
+### Using JSON instead
+
+Save the same translations as `MyMod_GERMAN.json`:
+
+```json
+{
+  "$Greeting": "Hallo {}",
+  "$Close": "Schliessen"
+}
+```
+
+Pass that file's path to `Load()`. The `Get()` and `Format()` calls stay the same.
+
+### Fallback and changing languages
+
+`Get()` looks for the key in the loaded file, then in your defaults. If neither contains it, it returns the key itself. An explicitly empty translation stays empty.
+
+Call `Load()` with another file to change languages. Each call replaces the previous translations, even if loading fails; missing entries never retain text from the old language.
+
+### Reporting errors
+
+Pass a function to receive error messages. This example uses a mod's existing `logger::warn` function:
+
+```cpp
+clib_utilsQTR::Translator text({{"$Close", "Close"}},
+    [](std::string_view error) { logger::warn("{}", error); });
+```
+
+`Load()` returns false if it encounters an error. The error function receives details such as the file, line, or key. Without that function, no messages are logged.
+
+An invalid entry is skipped while valid entries are kept. If the file cannot be read, has invalid text encoding, or contains malformed JSON, only your defaults are used.
+
+If `Format()` encounters an invalid translated format, it reports the error and tries the default text. If that format is also invalid, it returns the default literally.
+
+<details>
+<summary>File format and C++ details</summary>
+
+#### Text encoding
+
+Both file formats accept UTF-8 (with or without a BOM) and UTF-16LE with a BOM. A BOM is the encoding marker at the start of a file. Returned text is UTF-8.
+
+#### File rules
+
+TXT lines must start with `$` to be read. Blank lines and other lines are ignored. Like Skyrim's reader, the last tab separates the key and value. Write `\n` for a newline, `\t` for a tab within the text, and `\\` for a backslash. Other backslash sequences stay unchanged. There is no fixed line-length limit.
+
+JSON values must be strings. JSON uses normal JSON escaping, without a second unescaping pass. Its keys do not need a `$` prefix.
+
+In both formats, keys are case-sensitive. Duplicate keys report an error and keep the first value.
+
+#### Formatting
+
+`Format()` uses C++ format placeholders such as `{}` and `{0}` and returns an owned `std::string`. It does not expand Skyrim's nested `$key{...}` translation syntax.
+
+#### Lifetime and threads
+
+`Get()` returns a `std::string_view`, which refers to existing text rather than copying it. A view of a translation or default remains valid until the translator is reloaded or destroyed. For an unknown key, the view refers to the key you passed in, so that key must remain alive while you use the view.
+
+Load before using the translator from other threads, or protect reloads and readers with your own synchronization. Concurrent reads are fine if your error callback also supports them.
+
+The error function runs synchronously. It should not throw or modify the translator.
+
+</details>
+
 ## JSON fields with defaults
 
 A `Field` associates a JSON property name with a C++ value:
