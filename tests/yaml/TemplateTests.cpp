@@ -96,6 +96,18 @@ alias: *outer
     Require(aliases["rows"][0]["alias"]["v"].as<int>() == 9);
     Require(aliases["rows"][1]["alias"]["v"].as<int>() == 2);
     Require(aliases["base"].is(aliases["alias"]));
+    auto scalarAliases = Expand(R"yaml(
+templates:
+  scalars:
+    first: &literal $$input
+    repeated: *literal
+    value: &parameter $input
+    sameValue: *parameter
+rows: ["scalars(7)", "scalars(9)"]
+)yaml");
+    Require(scalarAliases["rows"][0]["repeated"].Scalar() == "$input");
+    Require(scalarAliases["rows"][0]["sameValue"].as<int>() == 7);
+    Require(scalarAliases["rows"][1]["sameValue"].as<int>() == 9);
     auto merged = Expand(R"yaml(
 templates:
   defaults: {value: 4, other: 7, empty: nonempty}

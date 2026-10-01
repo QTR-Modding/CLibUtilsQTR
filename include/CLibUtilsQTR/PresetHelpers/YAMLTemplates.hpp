@@ -66,6 +66,8 @@ namespace PresetHelpers::YAML_Helpers {
             }
 
             void Substitute(YAML::Node node, const Arguments& arguments, std::vector<YAML::Node>& visited) {
+                if (node.IsNull() || (node.IsScalar() && !node.Scalar().starts_with('$') &&
+                    (node.Tag() == "tag:yaml.org,2002:str" || node.Scalar().find('(') == std::string::npos))) return;
                 if (std::any_of(visited.begin(), visited.end(), [&](const auto& seen) { return seen.is(node); })) return;
                 visited.push_back(node);
                 if (auto call = ParseCall(node)) {
@@ -111,6 +113,8 @@ namespace PresetHelpers::YAML_Helpers {
             }
 
             void Expand(YAML::Node node, std::vector<std::pair<YAML::Node, bool>>& visited) {
+                if (node.IsNull() || (node.IsScalar() &&
+                    (node.Tag() == "tag:yaml.org,2002:str" || node.Scalar().find('(') == std::string::npos))) return;
                 if (node.is(templateSection)) return;
                 const auto found = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) { return entry.first.is(node); });
                 if (found != visited.end()) {
