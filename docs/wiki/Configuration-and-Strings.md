@@ -2,7 +2,18 @@
 
 ## Translations
 
-`Translator` reads a translation file and uses your built-in text for missing entries:
+`Translator` loads translated text from a TXT or JSON file. You supply the default text and choose which language file to load. Missing translations use your defaults.
+
+### Start with a TXT file
+
+Create `Interface/Translations/MyMod_GERMAN.txt` with these two lines. Separate each key (such as `$Greeting`) from its text with a **Tab**, not spaces. The `{}` placeholder will be replaced with a value from your code.
+
+```text
+$Greeting	Hallo {}
+$Close	Schliessen
+```
+
+In your mod, define the English defaults and load the file:
 
 ```cpp
 #include <CLibUtilsQTR/Translator.hpp>
@@ -12,15 +23,17 @@ clib_utilsQTR::Translator text({
     {"$Close", "Close"}
 });
 text.Load("Interface/Translations/MyMod_GERMAN.txt");
-const auto greeting = text.Format("$Greeting", "Alex");
-const auto closeLabel = text.Get("$Close");
+const auto greeting = text.Format("$Greeting", "Alex");  // "Hallo Alex"
+const auto closeLabel = text.Get("$Close");              // "Schliessen"
 ```
 
-This module uses the `json` feature, included by default. It reads loose files, not BSA archives, and does not use CommonLib or the game's translator. Your mod chooses the language, file path, and default strings; nothing is registered with Skyrim.
+Use `Get()` for plain text and `Format()` when you need to fill in placeholders. Without the file, these calls return `"Hello Alex"` and `"Close"` instead.
 
-TXT files use Skyrim's `$key`, a literal tab, then the translation. Lines not starting with `$` are ignored. Like Skyrim's reader, the last tab separates the key and value. Values support `\n`, `\t`, and `\\`; other backslash sequences stay unchanged. Blank lines are allowed, and there is no fixed line-length limit.
+The module is included in QTR's default installation through the `json` feature. It reads loose files, not BSA archives. It does not use CommonLib or register text with Skyrim's translator.
 
-JSON files contain an object of string values:
+### Using JSON instead
+
+Save the same translations as `MyMod_GERMAN.json`:
 
 ```json
 {
@@ -29,20 +42,57 @@ JSON files contain an object of string values:
 }
 ```
 
-Both formats accept UTF-8 (with or without a BOM) and UTF-16LE with a BOM. A BOM is the encoding marker at the start of a file. Returned text is UTF-8. JSON uses normal JSON escaping, without a second unescaping pass. Keys are case-sensitive; JSON keys do not need a `$` prefix. Empty translations are kept. Duplicate keys report an error and keep the first value.
+Pass that file's path to `Load()`. The `Get()` and `Format()` calls stay the same.
 
-To receive errors, pass a function as the second constructor argument:
+### Fallback and changing languages
+
+`Get()` looks for the key in the loaded file, then in your defaults. If neither contains it, it returns the key itself. An explicitly empty translation stays empty.
+
+Call `Load()` with another file to change languages. Each call replaces the previous translations, even if loading fails; missing entries never retain text from the old language.
+
+### Reporting errors
+
+Pass a function to receive error messages. This example uses a mod's existing `logger::warn` function:
 
 ```cpp
 clib_utilsQTR::Translator text({{"$Close", "Close"}},
     [](std::string_view error) { logger::warn("{}", error); });
 ```
 
-The function receives file/line or key details. It runs synchronously and should not throw or modify the translator. Without it, diagnostics are discarded. `Load()` returns false if any error occurs. Valid entries survive individual entry errors; unreadable files, invalid encodings, or invalid JSON leave only the defaults. Each load replaces the previous translations, so switching languages cannot retain text from the old language.
+`Load()` returns false if it encounters an error. The error function receives details such as the file, line, or key. Without that function, no messages are logged.
 
-`Get()` returns the translation, then the built-in default, then the key itself if neither exists. Its string view remains valid until the translator is reloaded or destroyed; an unknown key's view instead has the caller's key lifetime. `Format()` returns an owned string using C++ format placeholders such as `{}` and `{0}`. An invalid translated format reports an error and retries the default; if that also fails, it returns the default literally. This does not expand Skyrim's nested `$key{...}` translation syntax.
+An invalid entry is skipped while valid entries are kept. If the file cannot be read, has invalid text encoding, or contains malformed JSON, only your defaults are used.
+
+If `Format()` encounters an invalid translated format, it reports the error and tries the default text. If that format is also invalid, it returns the default literally.
+
+<details>
+<summary>File format and C++ details</summary>
+
+#### Text encoding
+
+Both file formats accept UTF-8 (with or without a BOM) and UTF-16LE with a BOM. A BOM is the encoding marker at the start of a file. Returned text is UTF-8.
+
+#### File rules
+
+TXT lines must start with `$` to be read. Blank lines and other lines are ignored. Like Skyrim's reader, the last tab separates the key and value. Write `\n` for a newline, `\t` for a tab within the text, and `\\` for a backslash. Other backslash sequences stay unchanged. There is no fixed line-length limit.
+
+JSON values must be strings. JSON uses normal JSON escaping, without a second unescaping pass. Its keys do not need a `$` prefix.
+
+In both formats, keys are case-sensitive. Duplicate keys report an error and keep the first value.
+
+#### Formatting
+
+`Format()` uses C++ format placeholders such as `{}` and `{0}` and returns an owned `std::string`. It does not expand Skyrim's nested `$key{...}` translation syntax.
+
+#### Lifetime and threads
+
+`Get()` returns a `std::string_view`, which refers to existing text rather than copying it. A view of a translation or default remains valid until the translator is reloaded or destroyed. For an unknown key, the view refers to the key you passed in, so that key must remain alive while you use the view.
 
 Load before using the translator from other threads, or protect reloads and readers with your own synchronization. Concurrent reads are fine if your error callback also supports them.
+
+The error function runs synchronously. It should not throw or modify the translator.
+
+</details>
 
 ## JSON fields with defaults
 
