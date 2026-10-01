@@ -46,6 +46,10 @@ literal: {"<<": keep}
     auto duplicateKeys = YAML::Load("{<<: [{x: 1, x: 2}, {x: 3}], y: 0}");
     PresetHelpers::YAML_Helpers::ResolveMergeKeys(duplicateKeys);
     Require(duplicateKeys["x"].as<int>() == 1);
+    auto undefinedDuplicate = YAML::Load("{<<: {x: 3}, x: 1, x: 2}");
+    undefinedDuplicate["x"] = YAML::Node(YAML::NodeType::Undefined);
+    PresetHelpers::YAML_Helpers::ResolveMergeKeys(undefinedDuplicate);
+    Require(undefinedDuplicate["x"].as<int>() == 3);
     auto nullKey = YAML::Load("{<<: {'null': merged, '': empty}, null: explicit}");
     PresetHelpers::YAML_Helpers::ResolveMergeKeys(nullKey);
     Require(nullKey["null"].Scalar() == "merged" && nullKey[""].Scalar() == "empty");

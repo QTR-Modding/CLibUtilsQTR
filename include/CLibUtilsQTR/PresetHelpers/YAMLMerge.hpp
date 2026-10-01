@@ -1,7 +1,6 @@
 #pragma once
 #include <algorithm>
 #include <utility>
-#include <unordered_set>
 #include <unordered_map>
 #include <vector>
 #include <yaml-cpp/yaml.h>
@@ -28,16 +27,12 @@ namespace PresetHelpers::YAML_Helpers {
                 }
             }
             if (!hasMerge) return;
-            std::unordered_set<std::string> keys;
-            for (const auto& entry : node) {
-                if (entry.first.IsScalar()) keys.insert(entry.first.Scalar());
-            }
             for (const auto& source : sources) {
                 if (!source.IsMap()) throw YAML::RepresentationException(source.Mark(), "YAML merge requires maps");
                 for (const auto& entry : source) {
                     if (!entry.first.IsScalar()) throw YAML::RepresentationException(entry.first.Mark(), "YAML merge requires scalar keys");
-                    const auto& key = entry.first.Scalar();
-                    if (keys.insert(key).second) node[key] = entry.second;
+                    auto destination = node[entry.first.Scalar()];
+                    if (!destination.IsDefined()) destination = entry.second;
                 }
             }
             // Quoted "<<" is an ordinary key, not a merge directive.
