@@ -191,7 +191,9 @@ settings: 'setting({duration: 6, sound: Crack}, 2)'
 
 The result is `{duration: 2, sound: Crack}`.
 
-Bodies can use ordinary YAML anchors and aliases. An alias within a body refers to the same copied value; separate calls produce separate copies. Arguments are parsed as a separate YAML list, so aliases in argument text cannot refer to anchors elsewhere in the file. Pass a mapping directly or call a template that contains the anchor instead.
+Template definitions can contain YAML anchors and aliases. Each call copies the definition, preserving links between its aliases.
+
+Arguments are parsed separately from the document, so they cannot use its anchors. Pass a mapping directly or put the anchor inside a template.
 
 To call another template from a definition:
 
@@ -207,15 +209,19 @@ settings: crackSettings(2)
 
 Parameters inside the nested call's arguments also count toward the enclosing template's parameter order. Here, `crackSettings` has one parameter: `$duration`.
 
-A call can also supply an argument: `value("crackSettings(2)")`. Quote the nested call so YAML treats it as one argument even if it contains commas. Argument calls run before the receiving template's body. A body cannot call itself, directly or through other bodies; finite calls nested in arguments are allowed.
+A call can supply another call's argument: `value("crackSettings(2)")`. Here, `crackSettings(2)` runs first, and `value` receives its result. Quote the inner call to keep any commas inside one argument.
+
+A definition cannot call itself, directly or through another template. Calls nested in arguments are allowed, such as `value("value(2)")`.
 
 A template may produce a scalar, mapping, or list. A list result stays one value: placing it inside another list produces a nested list.
 
 ### Call recognition and definitions
 
-The helper expands whole scalar values that start with a declared template name followed by `(`. Ordinary quoted YAML scalars can be calls too. Use the explicit YAML string tag to keep matching text literal: `label: !!str soundSettings(6, Crack)`. Text starting with an undeclared name remains ordinary text.
+Calls must occupy a whole YAML value and start with a defined template name followed by `(`. Quoting a call still allows expansion. To keep the text unchanged, write `label: !!str soundSettings(6, Crack)`. Unknown template names remain ordinary text.
 
-Keep definitions in one top-level `templates` mapping. Templates belong to that document. An ordinary root merge can supply the mapping; an explicit `templates` mapping replaces an inherited mapping, and earlier merge sources win over later sources. Duplicate explicit `templates` sections and duplicate template names are errors.
+Keep definitions in one top-level `templates` mapping; they are available only within that document. Duplicate sections or template names are errors.
+
+A root-level YAML merge can supply `templates`. An explicit `templates` mapping replaces the inherited one. When merging several sources, the first takes precedence.
 
 After expansion, the helper removes the top-level definitions. Documents without `templates` continue through ordinary merge resolution.
 
