@@ -19,6 +19,7 @@ namespace PresetHelpers::YAML_Helpers {
             YAML::Node templateSection;
             std::unordered_map<std::string, Definition> definitions;
             std::vector<std::string> activeCalls;
+            std::unordered_map<std::string, Call> parsedCalls;
 
             static void Fail(const YAML::Node& node, const std::string& message) {
                 throw YAML::RepresentationException(node.Mark(), message);
@@ -29,18 +30,37 @@ namespace PresetHelpers::YAML_Helpers {
                     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == std::string::npos;
             }
 
-            std::optional<Call> ParseCall(const YAML::Node& node) const {
+            std::optional<Call> ParseCall(const YAML::Node& node, bool cacheDefinitionCall = false) {
                 if (!node.IsScalar() || node.Tag() == "tag:yaml.org,2002:str") return std::nullopt;
                 const auto& text = node.Scalar();
                 const auto open = text.find('(');
                 if (open == std::string::npos || !definitions.contains(text.substr(0, open))) return std::nullopt;
                 if (text.back() != ')') Fail(node, "Missing ')' in template call");
+                if (const auto cached = parsedCalls.find(text); cached != parsedCalls.end()) {
+                    return Call{cached->second.name, YAML::Clone(cached->second.arguments)};
+                }
                 auto args = YAML::Load("[" + text.substr(open + 1, text.size() - open - 2) + "]");
-                return Call{text.substr(0, open), args};
+                Call call{text.substr(0, open), args};
+                if (cacheDefinitionCall) parsedCalls.emplace(text, call);
+                return call;
             }
 
             void FindParameters(const YAML::Node& node, std::vector<std::string>& parameters,
-                                std::vector<std::pair<YAML::Node, bool>>& visited) const {
+                                std::vector<std::pair<YAML::Node, bool>>& visited) {
+                if (const auto call = ParseCall(node, true)) {
+                    for (const auto& arg : call->arguments) FindParameters(arg, parameters, visited);
+                    return;
+                }
+                if (node.IsScalar()) {
+                    const auto& value = node.Scalar();
+                    if (value.starts_with('$') && !value.starts_with("$$")) {
+                        const auto name = value.substr(1);
+                        if (!IsName(name)) Fail(node, "Invalid parameter '" + value + "'");
+                        if (std::find(parameters.begin(), parameters.end(), name) == parameters.end()) parameters.push_back(name);
+                    }
+                    return;
+                }
+                if (!node.IsMap() && !node.IsSequence()) return;
                 const auto seen = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) { return entry.first.is(node); });
                 if (seen != visited.end()) {
                     if (!seen->second) Fail(node, "Circular YAML alias");
@@ -48,24 +68,17 @@ namespace PresetHelpers::YAML_Helpers {
                 }
                 const auto index = visited.size();
                 visited.emplace_back(node, false);
-                if (const auto call = ParseCall(node)) {
-                    for (const auto& arg : call->arguments) FindParameters(arg, parameters, visited);
-                } else if (node.IsScalar()) {
-                    const auto& value = node.Scalar();
-                    if (value.starts_with('$') && !value.starts_with("$$")) {
-                        const auto name = value.substr(1);
-                        if (!IsName(name)) Fail(node, "Invalid parameter '" + value + "'");
-                        if (std::find(parameters.begin(), parameters.end(), name) == parameters.end()) parameters.push_back(name);
-                    }
-                } else if (node.IsSequence()) {
+                if (node.IsSequence()) {
                     for (const auto& child : node) FindParameters(child, parameters, visited);
-                } else if (node.IsMap()) {
+                } else {
                     for (const auto& entry : node) FindParameters(entry.second, parameters, visited);
                 }
                 visited[index].second = true;
             }
 
             void Substitute(YAML::Node node, const Arguments& arguments, std::vector<YAML::Node>& visited) {
+                if (node.IsNull() || (node.IsScalar() && !node.Scalar().starts_with('$') &&
+                    (node.Tag() == "tag:yaml.org,2002:str" || node.Scalar().find('(') == std::string::npos))) return;
                 if (std::any_of(visited.begin(), visited.end(), [&](const auto& seen) { return seen.is(node); })) return;
                 visited.push_back(node);
                 if (auto call = ParseCall(node)) {
@@ -110,15 +123,19 @@ namespace PresetHelpers::YAML_Helpers {
                 return result;
             }
 
-            void Expand(YAML::Node node, std::vector<std::pair<YAML::Node, bool>>& visited) {
+            void Expand(YAML::Node node, std::unordered_map<int, std::vector<std::pair<YAML::Node, bool>>>& visited) {
+                if (node.IsNull() || (node.IsScalar() &&
+                    (node.Tag() == "tag:yaml.org,2002:str" || node.Scalar().find('(') == std::string::npos))) return;
                 if (node.is(templateSection)) return;
-                const auto found = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) { return entry.first.is(node); });
-                if (found != visited.end()) {
+                const auto position = node.Mark().pos;
+                auto& bucket = visited[position];
+                const auto found = std::find_if(bucket.begin(), bucket.end(), [&](const auto& entry) { return entry.first.is(node); });
+                if (found != bucket.end()) {
                     if (!found->second) Fail(node, "Circular YAML alias");
                     return;
                 }
-                const auto index = visited.size();
-                visited.emplace_back(node, false);
+                const auto index = bucket.size();
+                bucket.emplace_back(node, false);
                 if (auto call = ParseCall(node)) {
                     node = ExpandCall(*call, node);
                 } else if (node.IsSequence()) {
@@ -127,7 +144,9 @@ namespace PresetHelpers::YAML_Helpers {
                     for (const auto& entry : node) Expand(entry.second, visited);
                     MergeMapping(node);
                 }
-                visited[index].second = true;
+                bucket[index].second = true;
+                // A call's replacement can have a different mark; aliases must find the completed result.
+                if (node.Mark().pos != position) visited[node.Mark().pos].emplace_back(node, true);
             }
 
         public:
@@ -146,7 +165,7 @@ namespace PresetHelpers::YAML_Helpers {
             }
 
             void Expand(YAML::Node node) {
-                std::vector<std::pair<YAML::Node, bool>> visited;
+                std::unordered_map<int, std::vector<std::pair<YAML::Node, bool>>> visited;
                 Expand(node, visited);
             }
         };
@@ -166,19 +185,17 @@ namespace PresetHelpers::YAML_Helpers {
             foundTemplates = true;
         }
         if (!foundTemplates) {
-            std::vector<std::pair<YAML::Node, bool>> visited;
+            std::unordered_map<int, std::vector<std::pair<YAML::Node, bool>>> visited;
             detail::ResolveMergeKeys(document, visited, false);
         }
         if (!std::as_const(document)["templates"].IsDefined()) {
             ResolveMergeKeys(document);
             return;
         }
-        auto result = YAML::Clone(document);
-        const auto templates = std::as_const(result)["templates"];
+        const auto templates = std::as_const(document)["templates"];
         detail::TemplateExpander expander(templates);
-        result.remove("templates");
-        expander.Expand(result);
-        document = result;
+        document.remove("templates");
+        expander.Expand(document);
     } catch (const YAML::Exception& error) {
         if (source.empty()) throw;
         throw YAML::RepresentationException(error.mark, source + ": " + error.msg);
