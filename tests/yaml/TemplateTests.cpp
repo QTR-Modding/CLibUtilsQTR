@@ -184,6 +184,27 @@ x: v()
     } catch (const YAML::Exception& error) {
         Require(std::string(error.what()).find("example.yml") != std::string::npos);
     }
+    auto cachedAliases = Expand(R"yaml(
+templates:
+  leaf:
+    first: $input
+    second: &escaped $$input
+    third: *escaped
+  forward: leaf($value)
+  pair: [$first, $second]
+  forwardedPair: pair(&shared $value, *shared)
+rows: ["forward(one)", "forward(two)"]
+pairs: ["forwardedPair(11)", "forwardedPair(22)"]
+)yaml");
+    Require(cachedAliases["rows"][0]["first"].Scalar() == "one");
+    Require(cachedAliases["rows"][1]["first"].Scalar() == "two");
+    Require(cachedAliases["rows"][0]["second"].Scalar() == "$input");
+    Require(cachedAliases["rows"][0]["third"].Scalar() == "$input");
+    Require(cachedAliases["rows"][1]["third"].Scalar() == "$input");
+    Require(cachedAliases["pairs"][0][0].as<int>() == 11);
+    Require(cachedAliases["pairs"][0][1].as<int>() == 11);
+    Require(cachedAliases["pairs"][1][0].as<int>() == 22);
+    Require(cachedAliases["pairs"][1][1].as<int>() == 22);
     if (argc == 3) {
         std::size_t count = 0;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[1])) {

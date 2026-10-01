@@ -19,6 +19,7 @@ namespace PresetHelpers::YAML_Helpers {
             YAML::Node templateSection;
             std::unordered_map<std::string, Definition> definitions;
             std::vector<std::string> activeCalls;
+            std::unordered_map<std::string, Call> parsedCalls;
 
             static void Fail(const YAML::Node& node, const std::string& message) {
                 throw YAML::RepresentationException(node.Mark(), message);
@@ -29,18 +30,23 @@ namespace PresetHelpers::YAML_Helpers {
                     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == std::string::npos;
             }
 
-            std::optional<Call> ParseCall(const YAML::Node& node) const {
+            std::optional<Call> ParseCall(const YAML::Node& node, bool cacheDefinitionCall = false) {
                 if (!node.IsScalar() || node.Tag() == "tag:yaml.org,2002:str") return std::nullopt;
                 const auto& text = node.Scalar();
                 const auto open = text.find('(');
                 if (open == std::string::npos || !definitions.contains(text.substr(0, open))) return std::nullopt;
                 if (text.back() != ')') Fail(node, "Missing ')' in template call");
+                if (const auto cached = parsedCalls.find(text); cached != parsedCalls.end()) {
+                    return Call{cached->second.name, YAML::Clone(cached->second.arguments)};
+                }
                 auto args = YAML::Load("[" + text.substr(open + 1, text.size() - open - 2) + "]");
-                return Call{text.substr(0, open), args};
+                Call call{text.substr(0, open), args};
+                if (cacheDefinitionCall) parsedCalls.emplace(text, call);
+                return call;
             }
 
             void FindParameters(const YAML::Node& node, std::vector<std::string>& parameters,
-                                std::vector<std::pair<YAML::Node, bool>>& visited) const {
+                                std::vector<std::pair<YAML::Node, bool>>& visited) {
                 const auto seen = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) { return entry.first.is(node); });
                 if (seen != visited.end()) {
                     if (!seen->second) Fail(node, "Circular YAML alias");
@@ -48,7 +54,7 @@ namespace PresetHelpers::YAML_Helpers {
                 }
                 const auto index = visited.size();
                 visited.emplace_back(node, false);
-                if (const auto call = ParseCall(node)) {
+                if (const auto call = ParseCall(node, true)) {
                     for (const auto& arg : call->arguments) FindParameters(arg, parameters, visited);
                 } else if (node.IsScalar()) {
                     const auto& value = node.Scalar();
