@@ -28,51 +28,44 @@ bool Equal(const YAML::Node& a, const YAML::Node& b) {
     return true;
 }
 int main(int argc, char** argv) try {
-    auto node = Expand(R"(
-cooking: &cooking {duration: 0.06, sound: crack}
+    auto node = Expand(R"yaml(
 templates:
-  food:
-    parameters: [raw, cooked]
-    body:
-      forms: $raw
-      transformers: [{<<: *cooking, finalFormEditorID: $cooked}]
-rows: []
-)");
+  soundSettings:
+    duration: $duration
+    sound: $soundName
+    repeated: $duration
+settings:
+  <<: soundSettings(6, Crack)
+  duration: 2
+)yaml");
+    Require(node["settings"]["duration"].as<int>() == 2);
+    Require(node["settings"]["sound"].Scalar() == "Crack");
+    Require(node["settings"]["repeated"].as<int>() == 6);
     Require(!node["templates"]);
-    try {
-        auto bad = YAML::Load("templates: []");
-        PresetHelpers::YAML_Helpers::ResolveTemplates(bad, "example.yml");
-        Require(false);
-    } catch (const YAML::Exception& error) {
-        Require(std::string(error.what()).find("example.yml") != std::string::npos);
-    }
-    node = Expand(R"(
+    node = Expand(R"yaml(
 shared: &shared {duration: 6, nested: {value: original}}
 templates:
-  value:
-    parameters: [input]
-    body: $input
+  value: $input
   food:
-    parameters: [raw, cooked]
-    body:
-      forms: $raw
-      transformers: [{<<: *shared, finalFormEditorID: $cooked, duration: 0}]
-      literal: $$raw
-  forward:
-    parameters: [a, b]
-    body: {use: food, args: [$a, $b]}
+    forms: $raw
+    transformers: [{<<: *shared, finalFormEditorID: $cooked, duration: 0}]
+    literal: $$raw
+  forward: food($a, $b)
 rows:
-- {use: forward, args: [00065C99, "00000015"]}
-- {use: food, args: [other, result]}
+  - forward(00065C99, "00000015")
+  - food(other, result)
 values:
-- {use: value, args: [null]}
-- {use: value, args: [0]}
-- {use: value, args: [""]}
-- {use: value, args: [false]}
-- {use: value, args: [[a, b]]}
-- {use: value, args: [{key: value}]}
-- {use: value, args: ["$literal"]}
-)");
+  - value(null)
+  - value(0)
+  - value("")
+  - value(false)
+  - value([a, b])
+  - "value({key: value})"
+  - value("$literal")
+  - value("Crack, then (hiss)")
+  - value('it''s crackling')
+  - value("value(7)")
+)yaml");
     Require(node["rows"][0]["forms"].Scalar() == "00065C99");
     Require(node["rows"][0]["transformers"][0]["finalFormEditorID"].Scalar() == "00000015");
     Require(node["rows"][0]["transformers"][0]["finalFormEditorID"].Tag() == "!");
@@ -88,89 +81,97 @@ values:
     Require(node["values"][4].size() == 2 && node["values"][4].IsSequence());
     Require(node["values"][5]["key"].Scalar() == "value");
     Require(node["values"][6].Scalar() == "$literal");
-    Require(Expand("use: ordinary\nargs: unchanged")["use"].Scalar() == "ordinary");
-    Require(Expand("x: &x {v: 0}\ny: {<<: *x}")["y"]["v"].as<int>() == 0);
-    Require(Expand("templates: {v: {parameters: [], body: null}}\nx: {use: v, args: []}")["x"].IsNull());
-    Reject("templates: []", "must be a mapping");
-    Reject("templates: {v: {body: 1}}", "requires");
-    Reject("templates: {v: {parameters: [x, x], body: 1}}", "Duplicate parameter");
-    Reject("templates: {v: {parameters: ['$x'], body: 1}}", "Invalid parameter");
-    Reject("templates: {v: {parameters: [], body: 1, typo: 2}}", "Expected only");
-    Reject("templates: {v: {parameters: [], body: 1}, v: {parameters: [], body: 2}}", "Duplicate YAML template");
-    Reject("templates: {}\nx: {use: missing, args: []}", "Unknown YAML template");
-    Reject("templates: {}\nx: {use: [], args: []}", "must be a name");
-    Reject("templates: {v: {parameters: [x], body: $x}}\nx: {use: v, args: []}", "expects 1");
-    Reject("templates: {v: {parameters: [], body: 1}}\nx: {use: v}", "expects 0");
-    Reject("templates: {v: {parameters: [], body: 1}}\nx: {use: v, args: [], extra: 0}", "Expected only");
-    Reject("templates: {v: {parameters: [], body: $missing}}\nx: {use: v, args: []}", "Unknown parameter");
-    Reject("templates: {v: {parameters: [], body: {use: v, args: []}}}\nx: {use: v, args: []}", "Recursive");
-    Reject("templates: {a: {parameters: [], body: {use: b, args: []}}, b: {parameters: [], body: {use: a, args: []}}}\nx: {use: a, args: []}", "Recursive");
-    Reject("templates: {}\nx: &x [*x]", "Circular YAML alias");
-    Reject("templates: {v: {parameters: [], parameters: [], body: 1}}", "Duplicate field");
-    Reject("templates: {v: {parameters: [], body: 1, body: 2}}", "Duplicate field");
-    Reject("templates: {v: {parameters: [], body: 1}}\nx: {use: v, use: other, args: []}", "Duplicate field");
-    Reject("templates: {v: {parameters: [], body: 1}}\nx: {use: v, args: [], args: [2]}", "Duplicate field");
-    Reject("templates: {ignore: {parameters: [x], body: 1}}\nx: {use: ignore, args: [{use: missing, args: []}]}", "Unknown YAML template");
-    Reject("templates: {ignore: {parameters: [x], body: 1}, loop: {parameters: [], body: {use: loop, args: []}}}\nx: {use: ignore, args: [{use: loop, args: []}]}", "Recursive");
-    Require(Expand("templates: {id: {parameters: [x], body: $x}}\nx: {use: id, args: [{use: id, args: [7]}]}")["x"].as<int>() == 7);
-    auto aliases = Expand(R"(
+    Require(node["values"][7].Scalar() == "Crack, then (hiss)");
+    Require(node["values"][8].Scalar() == "it's crackling");
+    Require(node["values"][9].as<int>() == 7);
+    auto aliases = Expand(R"yaml(
 templates:
-  linked:
-    parameters: [input]
-    body: {base: &linked {v: $input}, alias: *linked}
-rows: [{use: linked, args: [1]}, {use: linked, args: [2]}]
+  linked: {base: &linked {v: $input}, alias: *linked}
+rows: ["linked(1)", "linked(2)"]
 base: &outer {v: 3}
 alias: *outer
-)");
+)yaml");
     Require(aliases["rows"][0]["base"].is(aliases["rows"][0]["alias"]));
     aliases["rows"][0]["base"]["v"] = 9;
     Require(aliases["rows"][0]["alias"]["v"].as<int>() == 9);
     Require(aliases["rows"][1]["alias"]["v"].as<int>() == 2);
     Require(aliases["base"].is(aliases["alias"]));
-    auto mergedArgument = Expand(R"(
-base: &defaults {value: 4, other: 7, empty: nonempty}
+    auto merged = Expand(R"yaml(
 templates:
-  defaults:
-    parameters: []
-    body: *defaults
-  setting:
-    parameters: [defaults]
-    body: {<<: $defaults, value: 0, empty: null}
+  defaults: {value: 4, other: 7, empty: nonempty}
+  setting: {<<: $defaults, value: 0, empty: null}
+  nested:
+    <<: defaults()
+    value: 0
 rows:
-- {use: setting, args: [*defaults]}
-- {use: setting, args: [{use: defaults, args: []}]}
-)");
-    for (const auto& row : mergedArgument["rows"]) {
+  - 'setting({value: 5, other: 7, empty: nonempty})'
+  - setting("defaults()")
+  - nested()
+last: &last {other: 8, tail: yes}
+row: {<<: ["defaults()", *last], value: 0}
+<<: defaults()
+)yaml");
+    for (const auto& row : merged["rows"]) {
         Require(row["value"].as<int>() == 0);
-        Require(row["empty"].IsNull());
         Require(row["other"].as<int>() == 7);
         Require(!row["<<"]);
     }
-    Reject("templates: {v: {parameters: [x], body: {<<: $x}}}\nx: {use: v, args: [4]}", "YAML merge requires");
-    Reject("templates: {v: {parameters: [], body: &cycle [*cycle]}}\nx: {use: v, args: []}", "Circular YAML alias");
-    Reject("templates: {}\ntemplates: {}", "Duplicate top-level 'templates'");
-    Reject("templates: {}\ntemplates: {v: {parameters: [], body: 1}}\nx: {use: v, args: []}", "Duplicate top-level 'templates'");
-    auto inheritedTemplates = Expand(R"(
+    Require(merged["rows"][0]["empty"].IsNull());
+    Require(merged["row"]["other"].as<int>() == 7);
+    Require(merged["row"]["tail"].Scalar() == "yes");
+    Require(merged["other"].as<int>() == 7);
+    auto inherited = Expand(R"yaml(
 common: &common
   templates:
-    setting:
-      parameters: [defaults]
-      body: {<<: $defaults, value: 0}
+    setting: {<<: $defaults, value: 0}
 <<: *common
-row: {use: setting, args: [{value: 5, extra: 7}]}
-)");
-    Require(!inheritedTemplates["templates"]);
-    Require(inheritedTemplates["row"]["value"].as<int>() == 0);
-    Require(inheritedTemplates["row"]["extra"].as<int>() == 7);
-    auto rootPriority = Expand(R"(
-first: &first {templates: {v: {parameters: [], body: first}}}
-second: &second {templates: {v: {parameters: [], body: second}}}
-<<: [*first, *second]
-x: {use: v, args: []}
-)");
-    Require(rootPriority["x"].Scalar() == "first");
-    Require(Expand("<<: {templates: {v: {parameters: [], body: inherited}}}\ntemplates: {v: {parameters: [], body: explicit}}\nx: {use: v, args: []}")["x"].Scalar() == "explicit");
+row: "setting({value: 5, extra: 7})"
+)yaml");
+    Require(inherited["row"]["extra"].as<int>() == 7);
+    Require(inherited["row"]["value"].as<int>() == 0);
+    Require(Expand("templates: {v: null}\nx: v()")["x"].IsNull());
+    Require(Expand("templates: {v: 1}\nx: !!str v()")["x"].Scalar() == "v()");
+    Require(Expand("templates: {v: 1}\nx: unknown(2)")["x"].Scalar() == "unknown(2)");
+    Require(Expand("templates: {v: 1}\nx: {use: ordinary, args: unchanged}")["x"]["use"].Scalar() == "ordinary");
+    for (const auto& text : {"x: v(1)", "x: &x {v: 0}\ny: {<<: *x}", "x: {<<: [{v: 2}, {v: 3}], v: null}"}) {
+        auto old = YAML::Load(text);
+        PresetHelpers::YAML_Helpers::ResolveMergeKeys(old);
+        Require(Equal(old, Expand(text)));
+    }
+    Reject("templates: []", "must be a mapping");
+    Reject("templates: {v: 1, v: 2}", "Duplicate YAML template");
+    Reject("templates: {'bad name': 1}", "Invalid template name");
+    Reject("templates: {v: $}\nx: v(1)", "Invalid parameter");
+    Reject("templates: {v: $x}\nx: v()", "expects 1");
+    Reject("templates: {v: 1}\nx: v(2)", "expects 0");
+    Reject("templates: {v: 1}\nx: v(", "Missing ')'");
+    Reject("templates: {v: v()}\nx: v()", "Recursive");
+    Reject("templates: {a: b(), b: a()}\nx: a()", "Recursive");
+    Reject("templates: {}\nx: &x [*x]", "Circular YAML alias");
+    Reject("templates: {v: {<<: $x}}\nx: v(4)", "YAML merge requires");
+    Reject("templates: {v: &cycle [*cycle]}\nx: v()", "Circular YAML alias");
+    Reject("templates: {}\ntemplates: {}", "Duplicate top-level 'templates'");
     Reject("&root {<<: *root}", "Circular YAML alias");
+    auto priority = Expand(R"yaml(
+first: &first {templates: {v: first}}
+second: &second {templates: {v: second}}
+<<: [*first, *second]
+x: v()
+)yaml");
+    Require(priority["x"].Scalar() == "first");
+    Require(Expand("<<: {templates: {v: inherited}}\ntemplates: {v: explicit}\nx: v()")["x"].Scalar() == "explicit");
+    auto sharedCall = Expand("templates: {v: {x: $x}}\na: &call v(2)\nb: *call");
+    Require(sharedCall["a"].is(sharedCall["b"]));
+    Require(sharedCall["b"]["x"].as<int>() == 2);
+    Require(Expand("templates: {v: $x}\nx: v(!!str 'v(7)')")["x"].Scalar() == "v(7)");
+    Reject("templates: {v: $x}\nx: v([1, 2)", "end of sequence");
+    try {
+        auto bad = YAML::Load("templates: []");
+        PresetHelpers::YAML_Helpers::ResolveTemplates(bad, "example.yml");
+        Require(false);
+    } catch (const YAML::Exception& error) {
+        Require(std::string(error.what()).find("example.yml") != std::string::npos);
+    }
     if (argc == 3) {
         std::size_t count = 0;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[1])) {

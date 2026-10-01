@@ -11,10 +11,40 @@ namespace PresetHelpers::YAML_Helpers {
                 (key.Scalar() == "<<" && key.Tag() == "?"));
         }
 
-        // Root discovery follows merge sources only; deferred template definitions are resolved after substitution.
+        inline void MergeMapping(YAML::Node node) {
+            std::vector<YAML::Node> sources;
+            bool hasMerge = false;
+            for (const auto& entry : node) {
+                if (!IsMergeKey(entry.first)) continue;
+                if (hasMerge) throw YAML::RepresentationException(entry.first.Mark(), "Use a sequence for multiple YAML merge sources");
+                hasMerge = true;
+                if (entry.second.IsMap()) sources.push_back(entry.second);
+                else if (entry.second.IsSequence()) {
+                    for (auto source : entry.second) sources.push_back(source);
+                } else {
+                    throw YAML::RepresentationException(entry.second.Mark(), "YAML merge requires a map or sequence of maps");
+                }
+            }
+            for (const auto& source : sources) {
+                if (!source.IsMap()) throw YAML::RepresentationException(source.Mark(), "YAML merge requires maps");
+                for (const auto& entry : source) {
+                    if (!entry.first.IsScalar()) throw YAML::RepresentationException(entry.first.Mark(), "YAML merge requires scalar keys");
+                    const auto key = entry.first.Scalar();
+                    if (!std::as_const(node)[key].IsDefined()) node[key] = entry.second;
+                }
+            }
+            // Quoted "<<" is an ordinary key, not a merge directive.
+            for (auto it = node.begin(); it != node.end(); ++it) {
+                if (IsMergeKey(it->first)) {
+                    node.remove(it->first);
+                    break;
+                }
+            }
+        }
+
+        // Root discovery follows merge sources only.
         inline void ResolveMergeKeys(YAML::Node node, std::vector<std::pair<YAML::Node, bool>>& visited,
-                                     bool recursive = true, const YAML::Node* deferred = nullptr) {
-            if (deferred && node.is(*deferred)) return;
+                                     bool recursive = true) {
             if (!node.IsMap() && !node.IsSequence()) return;
             const auto found = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) {
                 return entry.first.is(node);
@@ -26,37 +56,12 @@ namespace PresetHelpers::YAML_Helpers {
             const auto index = visited.size();
             visited.emplace_back(node, false);
             if (node.IsSequence()) {
-                for (auto child : node) ResolveMergeKeys(child, visited, recursive, deferred);
+                for (auto child : node) ResolveMergeKeys(child, visited, recursive);
             } else {
-                std::vector<YAML::Node> sources;
-                bool hasMerge = false;
                 for (const auto& entry : node) {
-                    if (recursive || IsMergeKey(entry.first)) ResolveMergeKeys(entry.second, visited, recursive, deferred);
-                    if (!IsMergeKey(entry.first)) continue;
-                    if (hasMerge) throw YAML::RepresentationException(entry.first.Mark(), "Use a sequence for multiple YAML merge sources");
-                    hasMerge = true;
-                    if (entry.second.IsMap()) sources.push_back(entry.second);
-                    else if (entry.second.IsSequence()) {
-                        for (auto source : entry.second) sources.push_back(source);
-                    } else {
-                        throw YAML::RepresentationException(entry.second.Mark(), "YAML merge requires a map or sequence of maps");
-                    }
+                    if (recursive || IsMergeKey(entry.first)) ResolveMergeKeys(entry.second, visited, recursive);
                 }
-                for (const auto& source : sources) {
-                    if (!source.IsMap()) throw YAML::RepresentationException(source.Mark(), "YAML merge requires maps");
-                    for (const auto& entry : source) {
-                        if (!entry.first.IsScalar()) throw YAML::RepresentationException(entry.first.Mark(), "YAML merge requires scalar keys");
-                        const auto key = entry.first.Scalar();
-                        if (!std::as_const(node)[key].IsDefined()) node[key] = entry.second;
-                    }
-                }
-                // Quoted "<<" is an ordinary key, not a merge directive.
-                for (auto it = node.begin(); it != node.end(); ++it) {
-                    if (IsMergeKey(it->first)) {
-                        node.remove(it->first);
-                        break;
-                    }
-                }
+                MergeMapping(node);
             }
             visited[index].second = true;
         }
