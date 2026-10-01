@@ -205,6 +205,47 @@ pairs: ["forwardedPair(11)", "forwardedPair(22)"]
     Require(cachedAliases["pairs"][0][1].as<int>() == 11);
     Require(cachedAliases["pairs"][1][0].as<int>() == 22);
     Require(cachedAliases["pairs"][1][1].as<int>() == 22);
+    auto returnedCalls = Expand(R"yaml(
+templates:
+  leaf: {value: 7}
+  nested: leaf()
+  scalar: $value
+first: &call nested()
+second: *call
+third: &scalarcall scalar("scalar(12)")
+fourth: *scalarcall
+)yaml");
+    Require(returnedCalls["first"].is(returnedCalls["second"]));
+    Require(returnedCalls["first"]["value"].as<int>() == 7);
+    Require(returnedCalls["third"].is(returnedCalls["fourth"]));
+    Require(returnedCalls["fourth"].as<int>() == 12);
+    YAML::Node nullMarked(YAML::NodeType::Map);
+    nullMarked["templates"]["value"] = YAML::Load("{item: $input}");
+    for (int value = 0; value < 200; ++value) {
+        YAML::Node row(YAML::NodeType::Map);
+        row["call"] = "value(" + std::to_string(value) + ")";
+        nullMarked["rows"].push_back(row);
+    }
+    PresetHelpers::YAML_Helpers::ResolveTemplates(nullMarked);
+    for (int value = 0; value < 200; ++value) Require(nullMarked["rows"][value]["call"]["item"].as<int>() == value);
+    YAML::Node sameMarked(YAML::NodeType::Map);
+    sameMarked["templates"]["value"] = YAML::Load("{item: $input}");
+    sameMarked["rows"].push_back(YAML::Load("{call: value(1)}"));
+    sameMarked["rows"].push_back(YAML::Load("{call: value(2)}"));
+    sameMarked["rows"].push_back(YAML::Clone(YAML::Load("{call: value(3)}")));
+    auto sharedRow = YAML::Load("{call: value(4)}");
+    sameMarked["rows"].push_back(sharedRow);
+    sameMarked["rows"].push_back(sharedRow);
+    PresetHelpers::YAML_Helpers::ResolveTemplates(sameMarked);
+    for (int value = 0; value < 4; ++value) Require(sameMarked["rows"][value]["call"]["item"].as<int>() == value + 1);
+    Require(sameMarked["rows"][3].is(sameMarked["rows"][4]));
+    YAML::Node runtimeCycle(YAML::NodeType::Map);
+    runtimeCycle["templates"]["unused"] = 1;
+    runtimeCycle["self"] = runtimeCycle;
+    bool rejectedRuntimeCycle = false;
+    try { PresetHelpers::YAML_Helpers::ResolveTemplates(runtimeCycle); }
+    catch (const YAML::Exception&) { rejectedRuntimeCycle = true; }
+    Require(rejectedRuntimeCycle);
     if (argc == 3) {
         std::size_t count = 0;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(argv[1])) {

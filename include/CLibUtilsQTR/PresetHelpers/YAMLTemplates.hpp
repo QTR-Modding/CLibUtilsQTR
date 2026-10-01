@@ -118,17 +118,19 @@ namespace PresetHelpers::YAML_Helpers {
                 return result;
             }
 
-            void Expand(YAML::Node node, std::vector<std::pair<YAML::Node, bool>>& visited) {
+            void Expand(YAML::Node node, std::unordered_map<int, std::vector<std::pair<YAML::Node, bool>>>& visited) {
                 if (node.IsNull() || (node.IsScalar() &&
                     (node.Tag() == "tag:yaml.org,2002:str" || node.Scalar().find('(') == std::string::npos))) return;
                 if (node.is(templateSection)) return;
-                const auto found = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) { return entry.first.is(node); });
-                if (found != visited.end()) {
+                const auto position = node.Mark().pos;
+                auto& bucket = visited[position];
+                const auto found = std::find_if(bucket.begin(), bucket.end(), [&](const auto& entry) { return entry.first.is(node); });
+                if (found != bucket.end()) {
                     if (!found->second) Fail(node, "Circular YAML alias");
                     return;
                 }
-                const auto index = visited.size();
-                visited.emplace_back(node, false);
+                const auto index = bucket.size();
+                bucket.emplace_back(node, false);
                 if (auto call = ParseCall(node)) {
                     node = ExpandCall(*call, node);
                 } else if (node.IsSequence()) {
@@ -137,7 +139,9 @@ namespace PresetHelpers::YAML_Helpers {
                     for (const auto& entry : node) Expand(entry.second, visited);
                     MergeMapping(node);
                 }
-                visited[index].second = true;
+                bucket[index].second = true;
+                // A call's replacement can have a different mark; aliases must find the completed result.
+                if (node.Mark().pos != position) visited[node.Mark().pos].emplace_back(node, true);
             }
 
         public:
@@ -156,7 +160,7 @@ namespace PresetHelpers::YAML_Helpers {
             }
 
             void Expand(YAML::Node node) {
-                std::vector<std::pair<YAML::Node, bool>> visited;
+                std::unordered_map<int, std::vector<std::pair<YAML::Node, bool>>> visited;
                 Expand(node, visited);
             }
         };
