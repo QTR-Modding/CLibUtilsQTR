@@ -39,5 +39,15 @@ literal: {"<<": keep}
     auto priority = YAML::Load("a: &a {x: 1}\nb: &b {x: 2}\nc: {<<: [*a, *b]}");
     PresetHelpers::YAML_Helpers::ResolveMergeKeys(priority);
     Require(priority["c"]["x"].as<int>() == 1);
+    auto undefined = YAML::Load("{<<: {value: 7}}");
+    auto slot = undefined["value"];
+    PresetHelpers::YAML_Helpers::ResolveMergeKeys(undefined);
+    Require(slot.as<int>() == 7 && undefined["value"].as<int>() == 7);
+    auto duplicateKeys = YAML::Load("{<<: [{x: 1, x: 2}, {x: 3}], y: 0}");
+    PresetHelpers::YAML_Helpers::ResolveMergeKeys(duplicateKeys);
+    Require(duplicateKeys["x"].as<int>() == 1);
+    auto nullKey = YAML::Load("{<<: {'null': merged, '': empty}, null: explicit}");
+    PresetHelpers::YAML_Helpers::ResolveMergeKeys(nullKey);
+    Require(nullKey["null"].Scalar() == "merged" && nullKey[""].Scalar() == "empty");
     std::cout << "YAML merge tests passed\n";
 }
