@@ -1,6 +1,7 @@
 {
   "name": "clib-utils-qtr",
   "version-string": "2.5.1",
+  "port-version": 1,
   "homepage": "https://github.com/QTR-Modding/CLibUtilsQTR",
   "license": "MIT",
   "default-features": [
