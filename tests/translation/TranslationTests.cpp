@@ -1,4 +1,11 @@
+#ifdef TEST_JSON_TRANSLATOR
+#include <CLibUtilsQTR/JSONTranslator.hpp>
+#include <rapidjson/stringbuffer.h>
+using TestTranslator = clib_utilsQTR::JSONTranslator;
+#else
 #include <CLibUtilsQTR/Translator.hpp>
+using TestTranslator = clib_utilsQTR::Translator;
+#endif
 
 #include <chrono>
 #include <iostream>
@@ -40,7 +47,7 @@ namespace {
     void RunTests() {
         Fixture fixture;
         std::vector<std::string> errors;
-        clib_utilsQTR::Translator text({{"$Hello", "Hello {}"}, {"$Empty", "Default"}, {"$Missing", "English"}},
+        TestTranslator text({{"$Hello", "Hello {}"}, {"$Empty", "Default"}, {"$Missing", "English"}},
             [&](std::string_view error) { errors.emplace_back(error); });
         Check(text.Format("$Hello", "player") == "Hello player", "built-in format");
         Check(text.Get("$Unknown") == "$Unknown", "unknown key");
@@ -69,6 +76,7 @@ namespace {
             errors[1].find(":3:") != std::string::npos, "TXT line diagnostics");
         errors.clear();
 
+#ifdef TEST_JSON_TRANSLATOR
         Check(text.Load(fixture.Write("language.json", R"({"$Hello":"Salut {}","$Empty":"","$Escaped":"a\nb\tc\\n","plain":"value"})")), "JSON file");
         Check(text.Format("$Hello", 42) == "Salut 42", "JSON format");
         Check(text.Get("$Escaped") == "a\nb\tc\\n", "JSON escapes exactly once");
@@ -78,7 +86,8 @@ namespace {
         Check(errors.size() == 4 && errors[0].find("$Hello") != std::string::npos, "JSON diagnostics");
         errors.clear();
 
-        Check(text.Load(fixture.Write("format.json", R"({"$Hello":"{1}","$Bad":"{"})")), "load bad format");
+#endif
+        Check(text.Load(fixture.Write("format.txt", "$Hello\t{1}\n$Bad\t{")), "load bad format");
         Check(text.Format("$Hello", "player") == "Hello player", "format error falls back to English");
         Check(text.Format("$Bad") == "$Bad", "format error without a default");
         Check(errors.size() == 2, "format diagnostics");
@@ -89,8 +98,14 @@ namespace {
             {"broken.json", "{\"$Hello\":\"changed\","}, {"array.json", "[]"},
             {"nul.json", std::string("{}\0trailing", sizeof("{}\0trailing") - 1)},
             {"utf8.txt", "$Hello\t\xF0\x9F"}, {"overlong.txt", "$Hello\t\xC0\x80"},
+            {"overlong3.txt", "$Hello\t\xE0\x80\x80"}, {"overlong4.txt", "$Hello\t\xF0\x80\x80\x80"},
+            {"utf8-surrogate.txt", "$Hello\t\xED\xA0\x80"}, {"too-large.txt", "$Hello\t\xF4\x90\x80\x80"},
+            {"continuation.txt", "$Hello\t\x80"}, {"bad-tail.txt", "$Hello\t\xC2!"},
+            {"nul-utf8.txt", std::string("$Hello\t\0x", sizeof("$Hello\t\0x") - 1)},
             {"odd.txt", UTF16LE(u"$Hello\tx") + 'x'},
             {"surrogate.txt", UTF16LE(std::u16string{u'$', u'X', u'\t', static_cast<char16_t>(0xD800)})},
+            {"low-surrogate.txt", UTF16LE(std::u16string{u'$', u'X', u'\t', static_cast<char16_t>(0xDC00)})},
+            {"bad-pair.txt", UTF16LE(std::u16string{u'$', u'X', u'\t', static_cast<char16_t>(0xD800), u'x'})},
             {"nul.txt", UTF16LE(std::u16string{u'$', u'X', u'\t', u'\0', u'x'})},
             {"unsupported.ini", "$Hello\tchanged"}
         };
@@ -102,7 +117,34 @@ namespace {
         Check(text.Get("$Missing") == "English", "missing file fallback");
         Check(text.Load(fixture.Write("empty.txt", "")), "empty TXT uses defaults");
         Check(text.Load(fixture.Write("bom.txt", "\xFF\xFE")), "empty UTF-16 TXT");
+#ifdef TEST_JSON_TRANSLATOR
         Check(text.Load(fixture.Write("utf16.json", UTF16LE(u"{\"$Hello\":\"Hallo {}\"}"))), "UTF-16 JSON");
+
+        // Compare every non-ASCII Unicode scalar with RapidJSON's encoding.
+        std::u16string unicode;
+        rapidjson::StringBuffer expected;
+        constexpr unsigned asciiLimit = 0x80, unicodeMax = 0x10FFFF;
+        constexpr unsigned surrogateFirst = 0xD800, lowSurrogateFirst = 0xDC00, surrogateLast = 0xDFFF;
+        constexpr unsigned supplementaryFirst = 0x10000, surrogateBits = 10, surrogateMask = 0x3FF;
+        for (unsigned codepoint = asciiLimit; codepoint <= unicodeMax; ++codepoint) {
+            if (codepoint >= surrogateFirst && codepoint <= surrogateLast) continue;
+            rapidjson::UTF8<>::Encode(expected, codepoint);
+            if (codepoint < supplementaryFirst) {
+                unicode += static_cast<char16_t>(codepoint);
+            } else {
+                const auto pair = codepoint - supplementaryFirst;
+                unicode += static_cast<char16_t>(surrogateFirst + (pair >> surrogateBits));
+                unicode += static_cast<char16_t>(lowSurrogateFirst + (pair & surrogateMask));
+            }
+        }
+        const std::string_view expectedText(expected.GetString(), expected.GetSize());
+        Check(text.Load(fixture.Write("scalars16.txt", UTF16LE(u"$Unicode\t" + unicode))), "all UTF-16 scalars");
+        Check(text.Get("$Unicode") == expectedText, "UTF-16 conversion agrees with RapidJSON");
+        Check(text.Load(fixture.Write("scalars8.txt", "$Unicode\t" + std::string(expectedText))), "all UTF-8 scalars");
+        Check(text.Get("$Unicode") == expectedText, "UTF-8 preserves every scalar");
+#else
+        Check(!text.Load(fixture.Write("unsupported.json", "{}")), "TXT translator rejects JSON");
+#endif
     }
 }
 

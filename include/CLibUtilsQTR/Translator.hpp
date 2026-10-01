@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -10,11 +11,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-
-#include <rapidjson/document.h>
-#include <rapidjson/error/en.h>
-#include <rapidjson/memorystream.h>
-#include <rapidjson/stringbuffer.h>
 
 #include "StringHelpers.hpp"
 
@@ -31,17 +27,9 @@ namespace clib_utilsQTR {
         // Replaces previous translations even on failure. False means at least one error;
         // valid entries from a partially valid file remain available.
         bool Load(const std::filesystem::path& path) {
-            translations_.clear();
-            std::ifstream file(path, std::ios::binary);
-            if (!file) return Report(path.string(), "cannot open translation file");
-            const std::string bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-            if (file.bad()) return Report(path.string(), "cannot read translation file");
-            std::string text;
-            if (!Decode(bytes, text)) return Report(path.string(), "invalid text encoding (expected UTF-8 or BOM-marked UTF-16LE)");
-            const auto extension = StringHelpers::toLowercase(path.extension().string());
-            if (extension == ".txt") return LoadTXT(text, path.string());
-            if (extension == ".json") return LoadJSON(text, path.string());
-            return Report(path.string(), "unsupported translation file extension");
+            return LoadFile(path, ".txt", [this](const auto& text, const auto& location) {
+                return LoadTXT(text, location);
+            });
         }
 
         // The view belongs to this object, or to key when neither table contains it.
@@ -66,10 +54,19 @@ namespace clib_utilsQTR {
             }
         }
 
-    private:
-        [[nodiscard]] std::string_view GetDefault(std::string_view key) const {
-            const auto it = defaults_.find(key);
-            return it != defaults_.end() ? std::string_view(it->second) : key;
+    protected:
+        template <class Reader>
+        bool LoadFile(const std::filesystem::path& path, std::string_view extension, Reader read) {
+            translations_.clear();
+            if (StringHelpers::toLowercase(path.extension().string()) != extension)
+                return Report(path.string(), "unsupported translation file extension");
+            std::ifstream file(path, std::ios::binary);
+            if (!file) return Report(path.string(), "cannot open translation file");
+            const std::string bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+            if (file.bad()) return Report(path.string(), "cannot read translation file");
+            std::string text;
+            if (!Decode(bytes, text)) return Report(path.string(), "invalid text encoding (expected UTF-8 or BOM-marked UTF-16LE)");
+            return read(text, path.string());
         }
 
         bool Report(std::string_view location, std::string_view message) const {
@@ -77,13 +74,71 @@ namespace clib_utilsQTR {
             return false;
         }
 
-        template <class Encoding, class Stream>
-        static bool Transcode(Stream& stream, std::string& output) {
-            rapidjson::StringBuffer buffer;
-            while (stream.Peek()) {
-                if (!rapidjson::Transcoder<Encoding, rapidjson::UTF8<>>::Validate(stream, buffer)) return false;
+        bool Insert(std::string key, std::string value, std::string_view location) {
+            if (key.empty() || key.find('\0') != std::string::npos || value.find('\0') != std::string::npos)
+                return Report(location, "empty key or embedded NUL");
+            if (translations_.contains(key)) return Report(location, std::format("duplicate key {} (first value kept)", key));
+            translations_.emplace(std::move(key), std::move(value));
+            return true;
+        }
+
+    private:
+        [[nodiscard]] std::string_view GetDefault(std::string_view key) const {
+            const auto it = defaults_.find(key);
+            return it != defaults_.end() ? std::string_view(it->second) : key;
+        }
+
+        static constexpr unsigned asciiMax = 0x7F;
+        static constexpr unsigned twoByteMax = 0x7FF;
+        static constexpr unsigned bmpMax = 0xFFFF;
+        static constexpr unsigned unicodeMax = 0x10FFFF;
+        static constexpr unsigned highSurrogateFirst = 0xD800;
+        static constexpr unsigned lowSurrogateFirst = 0xDC00;
+        static constexpr unsigned surrogateLast = 0xDFFF;
+        static constexpr unsigned supplementaryFirst = 0x10000;
+        static constexpr unsigned surrogateBits = 10;
+        static constexpr unsigned byteBits = 8;
+        static constexpr unsigned continuationBits = 6;
+        static constexpr unsigned continuationTag = 0x80;
+        static constexpr unsigned continuationMask = 0x3F;
+        static constexpr unsigned byteMask = 0xFF;
+        static constexpr std::size_t twoBytes = 2, threeBytes = 3, fourBytes = 4;
+
+        static void AppendUTF8(unsigned codepoint, std::string& output) {
+            if (codepoint <= asciiMax) {
+                output += static_cast<char>(codepoint);
+                return;
             }
-            output.assign(buffer.GetString(), buffer.GetSize());
+            const auto width = codepoint <= twoByteMax ? twoBytes : codepoint <= bmpMax ? threeBytes : fourBytes;
+            std::array<char, fourBytes> bytes{};
+            for (auto i = width - 1; i > 0; --i) {
+                bytes[i] = static_cast<char>(continuationTag | (codepoint & continuationMask));
+                codepoint >>= continuationBits;
+            }
+            bytes[0] = static_cast<char>((byteMask << (byteBits - width)) | codepoint);
+            output.append(bytes.data(), width);
+        }
+
+        static bool ValidateUTF8(std::string_view text) {
+            constexpr unsigned firstTwoByteLead = 0xC2, firstThreeByteLead = 0xE0, firstFourByteLead = 0xF0;
+            constexpr unsigned lastFourByteLead = 0xF4, leadMask = 0xC0;
+            constexpr std::array<unsigned, fourBytes + 1> minimum{0, 0, asciiMax + 1, twoByteMax + 1, bmpMax + 1};
+            for (std::size_t i = 0; i < text.size();) {
+                const auto lead = static_cast<unsigned char>(text[i++]);
+                if (lead == 0) return false;
+                if (lead <= asciiMax) continue;
+                if (lead < firstTwoByteLead || lead > lastFourByteLead) return false;
+                const auto width = lead < firstThreeByteLead ? twoBytes : lead < firstFourByteLead ? threeBytes : fourBytes;
+                if (text.size() - i < width - 1) return false;
+                unsigned codepoint = lead & (asciiMax >> width);
+                for (std::size_t remaining = width - 1; remaining > 0; --remaining) {
+                    const auto tail = static_cast<unsigned char>(text[i++]);
+                    if ((tail & leadMask) != continuationTag) return false;
+                    codepoint = (codepoint << continuationBits) | (tail & continuationMask);
+                }
+                if (codepoint < minimum[width] || codepoint > unicodeMax ||
+                    (codepoint >= highSurrogateFirst && codepoint <= surrogateLast)) return false;
+            }
             return true;
         }
 
@@ -92,22 +147,33 @@ namespace clib_utilsQTR {
             constexpr std::string_view utf8BOM = "\xEF\xBB\xBF";
             if (bytes.starts_with(utf16BOM)) {
                 constexpr std::size_t codeUnitBytes = sizeof(char16_t);
-                constexpr unsigned byteBits = 8;
                 if (bytes.size() % codeUnitBytes != 0) return false;
-                std::u16string units;
+                const auto readUnit = [&bytes](std::size_t i) {
+                    return static_cast<unsigned>(static_cast<unsigned char>(bytes[i])) |
+                           (static_cast<unsigned char>(bytes[i + 1]) << byteBits);
+                };
                 for (auto i = utf16BOM.size(); i < bytes.size(); i += codeUnitBytes) {
-                    const auto unit = static_cast<char16_t>(static_cast<unsigned char>(bytes[i]) |
-                        (static_cast<unsigned char>(bytes[i + 1]) << byteBits));
-                    if (unit == u'\0') return false;
-                    units.push_back(unit);
+                    auto codepoint = readUnit(i);
+                    if (codepoint == 0) return false;
+                    if (codepoint >= highSurrogateFirst && codepoint < lowSurrogateFirst) {
+                        i += codeUnitBytes;
+                        if (i == bytes.size()) return false;
+                        const auto low = readUnit(i);
+                        if (low < lowSurrogateFirst || low > surrogateLast) return false;
+                        codepoint = supplementaryFirst + ((codepoint - highSurrogateFirst) << surrogateBits) +
+                                    low - lowSurrogateFirst;
+                    } else if (codepoint >= lowSurrogateFirst && codepoint <= surrogateLast) {
+                        return false;
+                    }
+                    AppendUTF8(codepoint, output);
                 }
-                rapidjson::GenericStringStream<rapidjson::UTF16<char16_t>> stream(units.c_str());
-                return Transcode<rapidjson::UTF16<char16_t>>(stream, output);
+                return true;
             }
-            if (bytes.find('\0') != std::string::npos) return false;
-            const auto offset = bytes.starts_with(utf8BOM) ? utf8BOM.size() : 0;
-            rapidjson::MemoryStream stream(bytes.data() + offset, bytes.size() - offset);
-            return Transcode<rapidjson::UTF8<>>(stream, output);
+            auto text = std::string_view(bytes);
+            if (text.starts_with(utf8BOM)) text.remove_prefix(utf8BOM.size());
+            if (!ValidateUTF8(text)) return false;
+            output = text;
+            return true;
         }
 
         static std::string UnescapeTXT(std::string_view value) {
@@ -124,14 +190,6 @@ namespace clib_utilsQTR {
                 result += value[i];
             }
             return result;
-        }
-
-        bool Insert(std::string key, std::string value, std::string_view location) {
-            if (key.empty() || key.find('\0') != std::string::npos || value.find('\0') != std::string::npos)
-                return Report(location, "empty key or embedded NUL");
-            if (translations_.contains(key)) return Report(location, std::format("duplicate key {} (first value kept)", key));
-            translations_.emplace(std::move(key), std::move(value));
-            return true;
         }
 
         bool LoadTXT(const std::string& text, std::string_view path) {
@@ -152,26 +210,6 @@ namespace clib_utilsQTR {
                     continue;
                 }
                 if (!Insert(line.substr(0, separator), UnescapeTXT(std::string_view(line).substr(separator + 1)), location)) success = false;
-            }
-            return success;
-        }
-
-        bool LoadJSON(const std::string& text, std::string_view path) {
-            rapidjson::Document document;
-            document.Parse<rapidjson::kParseValidateEncodingFlag>(text.data(), text.size());
-            if (document.HasParseError())
-                return Report(path, std::format("JSON byte {}: {}", document.GetErrorOffset(), rapidjson::GetParseError_En(document.GetParseError())));
-            if (!document.IsObject()) return Report(path, "expected a JSON object of translation strings");
-            bool success = true;
-            for (const auto& entry : document.GetObject()) {
-                const std::string key(entry.name.GetString(), entry.name.GetStringLength());
-                const auto location = std::format("{} [{}]", path, key);
-                if (!entry.value.IsString()) {
-                    Report(location, "translation must be a string");
-                    success = false;
-                    continue;
-                }
-                if (!Insert(key, std::string(entry.value.GetString(), entry.value.GetStringLength()), location)) success = false;
             }
             return success;
         }

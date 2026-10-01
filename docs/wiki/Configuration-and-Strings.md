@@ -2,7 +2,7 @@
 
 ## Translations
 
-`Translator` loads translated text from a TXT or JSON file. You supply the default text and choose which language file to load. Missing translations use your defaults.
+`Translator` loads translated text from a TXT file. An optional `JSONTranslator` also reads JSON. You supply the default text and choose which language file to load. Missing translations use your defaults.
 
 ### Start with a TXT file
 
@@ -29,7 +29,7 @@ const auto closeLabel = text.Get("$Close");              // "Schliessen"
 
 Use `Get()` for plain text and `Format()` when you need to fill in placeholders. Without the file, these calls return `"Hello Alex"` and `"Close"` instead.
 
-The module is included in QTR's default installation through the `json` feature. It reads loose files, not BSA archives. It does not use CommonLib or register text with Skyrim's translator.
+TXT translation needs only QTR's base package. It reads loose files, not BSA archives. It does not use CommonLib or register text with Skyrim's translator.
 
 ### Using JSON instead
 
@@ -42,7 +42,19 @@ Save the same translations as `MyMod_GERMAN.json`:
 }
 ```
 
-Pass that file's path to `Load()`. The `Get()` and `Format()` calls stay the same.
+Use `JSONTranslator` and install QTR's `json` feature, which provides RapidJSON:
+
+```cpp
+#include <CLibUtilsQTR/JSONTranslator.hpp>
+
+clib_utilsQTR::JSONTranslator text({
+    {"$Greeting", "Hello {}"},
+    {"$Close", "Close"}
+});
+text.Load("MyMod_GERMAN.json");
+```
+
+The `Get()` and `Format()` calls stay the same. `JSONTranslator` can also load TXT files.
 
 ### Fallback and changing languages
 
