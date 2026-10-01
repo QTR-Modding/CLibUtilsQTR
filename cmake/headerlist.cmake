@@ -1,5 +1,6 @@
 set(headers ${headers}
     include/CLibUtilsQTR/Translator.hpp
+    include/CLibUtilsQTR/JSONTranslator.hpp
     include/CLibUtilsQTR/PresetHelpers/YAMLMerge.hpp
     include/CLibUtilsQTR/PresetHelpers/YAMLTemplates.hpp
     include/CLibUtilsQTR/Signing.hpp
