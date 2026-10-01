@@ -170,7 +170,7 @@ namespace PresetHelpers::YAML_Helpers {
             foundTemplates = true;
         }
         if (!foundTemplates) {
-            std::vector<std::pair<YAML::Node, bool>> visited;
+            std::unordered_map<int, std::vector<std::pair<YAML::Node, bool>>> visited;
             detail::ResolveMergeKeys(document, visited, false);
         }
         if (!std::as_const(document)["templates"].IsDefined()) {

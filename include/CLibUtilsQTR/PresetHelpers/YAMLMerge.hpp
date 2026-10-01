@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <utility>
 #include <unordered_set>
+#include <unordered_map>
 #include <vector>
 #include <yaml-cpp/yaml.h>
 
@@ -49,18 +50,20 @@ namespace PresetHelpers::YAML_Helpers {
         }
 
         // Root discovery follows merge sources only.
-        inline void ResolveMergeKeys(YAML::Node node, std::vector<std::pair<YAML::Node, bool>>& visited,
+        inline void ResolveMergeKeys(YAML::Node node, std::unordered_map<int, std::vector<std::pair<YAML::Node, bool>>>& visited,
                                      bool recursive = true) {
             if (!node.IsMap() && !node.IsSequence()) return;
-            const auto found = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) {
+            // Marks narrow the search; identity still decides whether this is an alias.
+            auto& bucket = visited[node.Mark().pos];
+            const auto found = std::find_if(bucket.begin(), bucket.end(), [&](const auto& entry) {
                 return entry.first.is(node);
             });
-            if (found != visited.end()) {
+            if (found != bucket.end()) {
                 if (!found->second) throw YAML::RepresentationException(node.Mark(), "Circular YAML alias");
                 return;
             }
-            const auto index = visited.size();
-            visited.emplace_back(node, false);
+            const auto index = bucket.size();
+            bucket.emplace_back(node, false);
             if (node.IsSequence()) {
                 for (auto child : node) ResolveMergeKeys(child, visited, recursive);
             } else {
@@ -69,7 +72,7 @@ namespace PresetHelpers::YAML_Helpers {
                 }
                 MergeMapping(node);
             }
-            visited[index].second = true;
+            bucket[index].second = true;
         }
     }
 
@@ -77,7 +80,7 @@ namespace PresetHelpers::YAML_Helpers {
     // Throws YAML::Exception for invalid merges or cyclic aliases; discard the document on failure.
     // https://github.com/QTR-Modding/CLibUtilsQTR/wiki/Configuration-and-Strings
     inline void ResolveMergeKeys(YAML::Node node) {
-        std::vector<std::pair<YAML::Node, bool>> visited;
+        std::unordered_map<int, std::vector<std::pair<YAML::Node, bool>>> visited;
         detail::ResolveMergeKeys(node, visited);
     }
 }

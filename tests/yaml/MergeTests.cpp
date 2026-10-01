@@ -49,5 +49,33 @@ literal: {"<<": keep}
     auto nullKey = YAML::Load("{<<: {'null': merged, '': empty}, null: explicit}");
     PresetHelpers::YAML_Helpers::ResolveMergeKeys(nullKey);
     Require(nullKey["null"].Scalar() == "merged" && nullKey[""].Scalar() == "empty");
+    YAML::Node programmatic(YAML::NodeType::Sequence);
+    for (int value = 0; value < 200; ++value) {
+        YAML::Node row(YAML::NodeType::Map);
+        YAML::Node defaults(YAML::NodeType::Map);
+        defaults["value"] = value;
+        YAML::Node mergeKey("<<");
+        mergeKey.SetTag("tag:yaml.org,2002:merge");
+        row[mergeKey] = defaults;
+        programmatic.push_back(row);
+    }
+    PresetHelpers::YAML_Helpers::ResolveMergeKeys(programmatic);
+    for (int value = 0; value < 200; ++value) Require(programmatic[value]["value"].as<int>() == value);
+    YAML::Node separate(YAML::NodeType::Sequence);
+    separate.push_back(YAML::Load("{<<: {x: 1}}"));
+    separate.push_back(YAML::Load("{<<: {x: 2}}"));
+    separate.push_back(YAML::Clone(YAML::Load("{<<: {x: 3}}")));
+    auto shared = YAML::Load("{<<: {x: 4}}");
+    separate.push_back(shared);
+    separate.push_back(shared);
+    PresetHelpers::YAML_Helpers::ResolveMergeKeys(separate);
+    for (int value = 0; value < 4; ++value) Require(separate[value]["x"].as<int>() == value + 1);
+    Require(separate[3].is(separate[4]));
+    YAML::Node cycle(YAML::NodeType::Sequence);
+    cycle.push_back(cycle);
+    bool rejectedCycle = false;
+    try { PresetHelpers::YAML_Helpers::ResolveMergeKeys(cycle); }
+    catch (const YAML::Exception&) { rejectedCycle = true; }
+    Require(rejectedCycle);
     std::cout << "YAML merge tests passed\n";
 }
