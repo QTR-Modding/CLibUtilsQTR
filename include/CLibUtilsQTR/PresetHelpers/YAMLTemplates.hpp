@@ -173,12 +173,10 @@ namespace PresetHelpers::YAML_Helpers {
             ResolveMergeKeys(document);
             return;
         }
-        auto result = YAML::Clone(document);
-        const auto templates = std::as_const(result)["templates"];
+        const auto templates = std::as_const(document)["templates"];
         detail::TemplateExpander expander(templates);
-        result.remove("templates");
-        expander.Expand(result);
-        document = result;
+        document.remove("templates");
+        expander.Expand(document);
     } catch (const YAML::Exception& error) {
         if (source.empty()) throw;
         throw YAML::RepresentationException(error.mark, source + ": " + error.msg);
