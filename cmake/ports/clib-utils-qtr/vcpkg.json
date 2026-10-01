@@ -37,9 +37,15 @@
           "name": "clib-utils-qtr",
           "default-features": false,
           "features": [
-            "skyrim"
+            "skyrim",
+            "yaml"
           ]
-        },
+        }
+      ]
+    },
+    "yaml": {
+      "description": "Game-independent YAML templates and merge keys.",
+      "dependencies": [
         "yaml-cpp"
       ]
     }
