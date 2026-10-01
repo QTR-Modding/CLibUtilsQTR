@@ -25,6 +25,7 @@ namespace PresetHelpers::YAML_Helpers {
                     throw YAML::RepresentationException(entry.second.Mark(), "YAML merge requires a map or sequence of maps");
                 }
             }
+            if (!hasMerge) return;
             for (const auto& source : sources) {
                 if (!source.IsMap()) throw YAML::RepresentationException(source.Mark(), "YAML merge requires maps");
                 for (const auto& entry : source) {
