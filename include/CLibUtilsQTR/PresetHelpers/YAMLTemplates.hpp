@@ -47,6 +47,20 @@ namespace PresetHelpers::YAML_Helpers {
 
             void FindParameters(const YAML::Node& node, std::vector<std::string>& parameters,
                                 std::vector<std::pair<YAML::Node, bool>>& visited) {
+                if (const auto call = ParseCall(node, true)) {
+                    for (const auto& arg : call->arguments) FindParameters(arg, parameters, visited);
+                    return;
+                }
+                if (node.IsScalar()) {
+                    const auto& value = node.Scalar();
+                    if (value.starts_with('$') && !value.starts_with("$$")) {
+                        const auto name = value.substr(1);
+                        if (!IsName(name)) Fail(node, "Invalid parameter '" + value + "'");
+                        if (std::find(parameters.begin(), parameters.end(), name) == parameters.end()) parameters.push_back(name);
+                    }
+                    return;
+                }
+                if (!node.IsMap() && !node.IsSequence()) return;
                 const auto seen = std::find_if(visited.begin(), visited.end(), [&](const auto& entry) { return entry.first.is(node); });
                 if (seen != visited.end()) {
                     if (!seen->second) Fail(node, "Circular YAML alias");
@@ -54,18 +68,9 @@ namespace PresetHelpers::YAML_Helpers {
                 }
                 const auto index = visited.size();
                 visited.emplace_back(node, false);
-                if (const auto call = ParseCall(node, true)) {
-                    for (const auto& arg : call->arguments) FindParameters(arg, parameters, visited);
-                } else if (node.IsScalar()) {
-                    const auto& value = node.Scalar();
-                    if (value.starts_with('$') && !value.starts_with("$$")) {
-                        const auto name = value.substr(1);
-                        if (!IsName(name)) Fail(node, "Invalid parameter '" + value + "'");
-                        if (std::find(parameters.begin(), parameters.end(), name) == parameters.end()) parameters.push_back(name);
-                    }
-                } else if (node.IsSequence()) {
+                if (node.IsSequence()) {
                     for (const auto& child : node) FindParameters(child, parameters, visited);
-                } else if (node.IsMap()) {
+                } else {
                     for (const auto& entry : node) FindParameters(entry.second, parameters, visited);
                 }
                 visited[index].second = true;

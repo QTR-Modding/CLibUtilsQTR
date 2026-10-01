@@ -96,6 +96,17 @@ alias: *outer
     Require(aliases["rows"][0]["alias"]["v"].as<int>() == 9);
     Require(aliases["rows"][1]["alias"]["v"].as<int>() == 2);
     Require(aliases["base"].is(aliases["alias"]));
+    auto inferredOrder = Expand(R"yaml(
+templates:
+  order:
+    first: &parameter $a
+    repeated: *parameter
+    second: $b
+result: order(11, 22)
+)yaml");
+    Require(inferredOrder["result"]["first"].as<int>() == 11);
+    Require(inferredOrder["result"]["repeated"].as<int>() == 11);
+    Require(inferredOrder["result"]["second"].as<int>() == 22);
     auto scalarAliases = Expand(R"yaml(
 templates:
   scalars:
