@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(
 	CLibUtilsQTR
-	VERSION 2.6.0
+	VERSION 2.7.0
 	LANGUAGES CXX
 )
 
