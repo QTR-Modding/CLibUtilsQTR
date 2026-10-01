@@ -3,14 +3,15 @@
 #include "CLibUtilsQTR/StringHelpers.hpp"
 #include "CLibUtilsQTR/PresetHelpers/PresetHelpers.hpp"
 #include "CLibUtilsQTR/FormReader.hpp"
-#include "CLibUtilsQTR/PresetHelpers/YAMLMerge.hpp"
+#include "CLibUtilsQTR/PresetHelpers/YAMLTemplates.hpp"
 
 namespace PresetHelpers::YAML_Helpers {
     inline std::vector<FormID> StringToFormIDs(const std::string& input) {
-        if (std::shared_lock lock(formGroups_mutex_);
-            formGroups.contains(input)) {
-            auto& temp = formGroups.at(input);
-            return std::vector<FormID>(temp.begin(), temp.end());
+        {
+            std::shared_lock lock(formGroups_mutex_);
+            if (const auto found = formGroups.find(input); found != formGroups.end()) {
+                return {found->second.begin(), found->second.end()};
+            }
         }
 
         if (FormID a_formid = FormReader::GetFormEditorIDFromString(input); a_formid > 0) {
@@ -21,11 +22,13 @@ namespace PresetHelpers::YAML_Helpers {
 
     template <typename T>
     std::vector<T> CollectFrom(const YAML::Node& node, const std::string& key) {
+        const auto field = node[key];
         auto res = std::vector<T>{};
-        if (node[key].IsScalar()) {
-            res.push_back(node[key].as<T>());
+        if (field.IsScalar()) {
+            res.push_back(field.as<T>());
         } else {
-            for (const auto& value : node[key]) {
+            res.reserve(field.size());
+            for (const auto& value : field) {
                 res.push_back(value.as<T>());
             }
         }
@@ -37,15 +40,13 @@ namespace PresetHelpers::YAML_Helpers {
 
     template <>
     inline std::vector<FormID> CollectFrom<FormID, std::string>(const YAML::Node& node, const std::string& key) {
+        const auto field = node[key];
+        if (field.IsScalar()) return StringToFormIDs(field.as<std::string>());
         auto res = std::vector<FormID>{};
-        if (node[key].IsScalar()) {
-            auto temp = StringToFormIDs(node[key].as<std::string>());
+        res.reserve(field.size());
+        for (const auto& value : field) {
+            auto temp = StringToFormIDs(value.as<std::string>());
             res.insert(res.end(), temp.begin(), temp.end());
-        } else {
-            for (const auto& iterator_value : node[key]) {
-                auto temp = StringToFormIDs(iterator_value.as<std::string>());
-                res.insert(res.end(), temp.begin(), temp.end());
-            }
         }
         return res;
     }
