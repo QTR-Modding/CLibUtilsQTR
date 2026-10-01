@@ -97,30 +97,47 @@ The helper updates the document in place and preserves aliases. It accepts scala
 
 ## Parameterized YAML templates
 
-Use a template when several entries share the same structure but need different values. Define the structure once, give its inputs names, and supply the values in each call.
+Define a reusable value under `templates`, then call it with the values you want to insert:
 
-### Define a template and use it
+```yaml
+templates:
+  soundSettings:
+    duration: $duration
+    sound: $soundName
+
+settings:
+  <<: soundSettings(6, Crack)
+  duration: 2
+```
+
+`soundSettings` is the template's name. Its contents are the value it produces. `$duration` and `$soundName` are parameters: placeholders filled by the arguments inside the parentheses.
+
+Arguments follow the **first appearance of each distinct parameter**, reading values from top to bottom, including nested values. Here, `6` fills `$duration` and `Crack` fills `$soundName`. Repeated occurrences of a parameter use the same argument. Reordering the first occurrences changes the argument order.
+
+The call produces `{duration: 6, sound: Crack}`. The `<<` merges those fields into `settings`, where the explicit duration overrides `6`:
+
+```yaml
+settings:
+  duration: 2
+  sound: Crack
+```
+
+### Use a call directly
+
+A call can replace an entire value. For repeated entries, put one call on each line:
 
 ```yaml
 templates:
   setting:
-    parameters: [name, value]
-    body:
-      name: $name
-      value: $value
+    name: $name
+    value: $value
 
 settings:
-  - use: setting
-    args: [distance, 100]
-  - use: setting
-    args: [enabled, false]
+  - setting(distance, 100)
+  - setting(enabled, false)
 ```
 
-`setting` is the template's name. `parameters` names its inputs, and `body` is the value it produces. Inside the body, `$name` and `$value` mark where the supplied values go.
-
-`use: setting` calls the template. `args` supplies values in the same order as `parameters`: the first call assigns `distance` to `name` and `100` to `value`.
-
-After expansion, the application reads:
+This produces:
 
 ```yaml
 settings:
@@ -130,73 +147,81 @@ settings:
     value: false
 ```
 
-The helper removes the top-level `templates` section and replaces each call with its expanded body. Each call produces a separate copy.
+A template with no parameters is called with empty parentheses, such as `defaults()`. Supply exactly one argument for each distinct parameter.
 
-### Supply arguments
+### Strings, lists, and mappings
 
-1. Each definition has exactly two fields: `parameters` and `body`. Each call has exactly two fields: `use` and `args`.
-2. `args` must be a list with one value for each parameter. For a template with no inputs, write `parameters: []` in the definition and `args: []` in the call.
-3. Template names and parameter names must be nonempty. Parameter names must be unique within their definition and are written without the `$` prefix.
-4. An argument can be a string, number, boolean, null, list, or mapping (a group of key/value fields). Its type is preserved: passing `false`, `0`, or `null` keeps that value. Quote a number such as `"123"` when it should remain a string.
-
-A parameter replaces a **whole value**. For example, `name: $name` works. `name: "Item $name"` remains the literal text `Item $name`; it does not insert the argument into that text. Parameter substitution applies to values, not field names.
-
-To produce a literal value starting with `$`, double the first dollar sign in the body: `name: $$name` produces `name: $name`. Write `name: $$price USD` to produce the literal `$price USD`; a value starting with a single `$` is treated as a parameter reference.
-
-### Combine arguments with YAML merges
-
-A body can use anchors and merge keys. Here, the `defaults` argument supplies fields to merge into the result:
+Arguments use YAML value syntax. Numbers, booleans, nulls, lists, and mappings retain their types. Quote an argument to keep it a string or to include commas:
 
 ```yaml
 templates:
-  timedSetting:
-    parameters: [defaults, duration]
-    body:
-      <<: $defaults
-      duration: $duration
+  value: $input
 
-settings:
-  - use: timedSetting
-    args: [{duration: 6, sound: Crack}, 2]
+values:
+  - value(0)
+  - value(false)
+  - value(null)
+  - value("")
+  - value("123")
+  - value("Crack, then (hiss)")
+  - value([first, second])
+  - 'value({duration: 2, sound: Crack})'
 ```
 
-The result is:
+The last call has quotes around the **whole call** because `: ` has a special meaning in the outer YAML document. Also quote whole calls when writing them inside YAML flow lists or mappings: `["setting(distance, 100)", "setting(enabled, false)"]`.
+
+A parameter replaces a whole value. `sound: $soundName` substitutes the argument; `sound: "Playing $soundName"` keeps that text as written. Field names are literal. Use `$$soundName` in a template to produce the literal `$soundName`.
+
+Template and parameter names use letters, digits, underscores, and hyphens. Write calls as `name(...)`, with the opening parenthesis immediately after the name.
+
+### Merges, anchors, and nested calls
+
+Calls are expanded before their results are merged. The usual [YAML merge rules](#yaml-templates-with-merge-keys) apply: explicit fields win, and earlier sources win in `<<: ["first()", "second()"]`. A call used as a merge source must produce a mapping, or a list of mappings.
+
+A mapping argument can supply merge fields inside a template:
 
 ```yaml
-settings:
-  - duration: 2
-    sound: Crack
+templates:
+  setting:
+    <<: $defaults
+    duration: $duration
+
+settings: 'setting({duration: 6, sound: Crack}, 2)'
 ```
 
-Arguments are substituted before the body's merge keys are resolved. The explicit `duration` therefore overrides the duration inherited from `defaults`, using the [merge rules above](#yaml-templates-with-merge-keys).
+The result is `{duration: 2, sound: Crack}`.
 
-Anchors and aliases within a body still refer to the same copied value. Separate calls have separate copies. A body can also be a list; its call is replaced by that list as a single value. If the call is already inside another list, the result is a nested list.
+Bodies can use ordinary YAML anchors and aliases. An alias within a body refers to the same copied value; separate calls produce separate copies. Arguments are parsed as a separate YAML list, so aliases in argument text cannot refer to anchors elsewhere in the file. Pass a mapping directly or call a template that contains the anchor instead.
 
-### Call another template
-
-A body or an argument can contain another `use` call. For example, given the `setting` template above, add this definition beside it:
+To call another template from a definition:
 
 ```yaml
-  distanceSetting:
-    parameters: [distance]
-    body:
-      use: setting
-      args: [distance, $distance]
+templates:
+  soundSettings:
+    duration: $duration
+    sound: $soundName
+  crackSettings: soundSettings($duration, Crack)
+
+settings: crackSettings(2)
 ```
 
-Calling `{use: distanceSetting, args: [100]}` produces `{name: distance, value: 100}`.
+Parameters inside the nested call's arguments also count toward the enclosing template's parameter order. Here, `crackSettings` has one parameter: `$duration`.
 
-Calls inside arguments are expanded before the receiving template's body, including arguments the body does not use. A body cannot call itself, directly or through another template. A finite nested call supplied as an argument, such as an identity template receiving the result of another identity call, is allowed.
+A call can also supply an argument: `value("crackSettings(2)")`. Quote the nested call so YAML treats it as one argument even if it contains commas. Argument calls run before the receiving template's body. A body cannot call itself, directly or through other bodies; finite calls nested in arguments are allowed.
 
-### Where definitions and calls belong
+A template may produce a scalar, mapping, or list. A list result stays one value: placing it inside another list produces a nested list.
 
-Keep definitions in one top-level `templates` mapping. Templates belong to that YAML document. A root-level YAML merge can supply this mapping too: an explicit `templates` field wins over an inherited one, and the first merge source wins over later sources. Duplicate explicit `templates` fields and duplicate template names are errors.
+### Call recognition and definitions
 
-When `templates` is present, the helper treats mappings containing `use` as calls throughout the document, including arguments. Reserve that field name for template calls in these documents. When `templates` is absent, the helper resolves ordinary YAML merges and leaves `use` and `args` as ordinary fields.
+The helper expands whole scalar values that start with a declared template name followed by `(`. Ordinary quoted YAML scalars can be calls too. Use the explicit YAML string tag to keep matching text literal: `label: !!str soundSettings(6, Crack)`. Text starting with an undeclared name remains ordinary text.
+
+Keep definitions in one top-level `templates` mapping. Templates belong to that document. An ordinary root merge can supply the mapping; an explicit `templates` mapping replaces an inherited mapping, and earlier merge sources win over later sources. Duplicate explicit `templates` sections and duplicate template names are errors.
+
+After expansion, the helper removes the top-level definitions. Documents without `templates` continue through ordinary merge resolution.
 
 ### Enable templates in C++
 
-Applications enable this QTR syntax by calling `ResolveTemplates` after loading YAML and before reading configuration fields. Use C++23 and yaml-cpp, and include the public header:
+Applications enable this QTR syntax after loading YAML and before reading configuration fields. Use C++23 and yaml-cpp:
 
 ```cpp
 #include <CLibUtilsQTR/PresetHelpers/YAMLTemplates.hpp>
@@ -206,6 +231,6 @@ PresetHelpers::YAML_Helpers::ResolveTemplates(config, "preset.yml");
 // Read the expanded config here.
 ```
 
-The second argument is optional and adds the filename to error messages. `ResolveTemplates` also resolves YAML merge keys, so it replaces an existing `ResolveMergeKeys` call. Expansion happens once during configuration loading.
+The second argument is optional and adds the filename to errors. This call also resolves merge keys, so it replaces an existing `ResolveMergeKeys` call. Expansion happens once during configuration loading.
 
-Catch `YAML::Exception` in the application's configuration error handler and discard the document if expansion fails. Errors include malformed definitions or calls, duplicate fields, unknown template or parameter names, incorrect argument counts, recursive calls, and circular YAML aliases. Definition structure is checked when loading the template bank; body contents are expanded and checked when that template is called.
+Catch `YAML::Exception` in the application's configuration error handler and discard the document if expansion fails. Invalid names, argument syntax, argument counts, merge values, recursive calls, and circular aliases produce errors. Parameter discovery inspects every definition when loading; calls and merges in a body are evaluated when that template is used.
