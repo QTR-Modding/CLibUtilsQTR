@@ -2,6 +2,8 @@
 
 #include <RE/Skyrim.h>
 #include <SKSE/SKSE.h>
+#include <shared_mutex>
+#include <unordered_set>
 
 #include "FormReader.hpp"
 #include "Serialization.hpp"
