@@ -203,14 +203,15 @@ namespace BoundingBox {
             return false;
         }
 
-        const float scale = obj->GetScale();
+        const auto node = obj->GetCurrent3D();
+        const float scale = node ? node->world.scale : obj->GetScale();
         minLocal *= scale;
         maxLocal *= scale;
 
         RE::NiMatrix3 rotation;
         RE::NiPoint3 translation;
 
-        if (const auto node = obj->GetCurrent3D()) {
+        if (node) {
             rotation = node->world.rotate;
             translation = node->world.translate;
         } else {
@@ -223,7 +224,7 @@ namespace BoundingBox {
         const RE::NiPoint3 worldCenter = translation + rotation * localCenter;
 
         out.Center = {worldCenter.x, worldCenter.y, worldCenter.z};
-        out.Extents = {halfExtents.x, halfExtents.y, halfExtents.z};
+        out.Extents = {std::abs(halfExtents.x), std::abs(halfExtents.y), std::abs(halfExtents.z)};
         out.Orientation = MatrixToDXQuaternion(rotation);
 
         return true;
