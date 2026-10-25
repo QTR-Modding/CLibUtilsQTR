@@ -1,4 +1,25 @@
+#include <windows.h>
+#include <wincrypt.h>
+
+namespace {
+bool signerInfoOnly{};
+bool reportSha1{};
+BOOL WINAPI TestGetParam(HCRYPTMSG message, DWORD param, DWORD index, void* data, DWORD* size) {
+    if (signerInfoOnly && param == CMSG_SIGNER_HASH_ALGORITHM_PARAM) {
+        SetLastError(static_cast<DWORD>(CRYPT_E_INVALID_MSG_TYPE));
+        return FALSE;
+    }
+    const auto result = CryptMsgGetParam(message, param, index, data, size);
+    if (result && data && reportSha1 && param == CMSG_SIGNER_INFO_PARAM) {
+        reinterpret_cast<CMSG_SIGNER_INFO*>(data)->HashAlgorithm.pszObjId = const_cast<char*>(szOID_OIWSEC_sha1);
+    }
+    return result;
+}
+}
+
+#define CryptMsgGetParam TestGetParam
 #include <CLibUtilsQTR/Signing.hpp>
+#undef CryptMsgGetParam
 #include "TestKey.hpp"
 #include <iostream>
 #include <stdexcept>
@@ -32,6 +53,7 @@ void CompareWindows(const S::SignedFile& file) {
 int wmain(int argc, wchar_t** argv) {
     if (argc != 3) return 1;
     const bool oracle = std::wstring_view(argv[2]) == L"oracle";
+    signerInfoOnly = std::wstring_view(argv[2]) == L"signer_info";
     const auto ntdll = GetModuleHandleW(L"ntdll.dll");
     if (oracle && ntdll && GetProcAddress(ntdll, "wine_get_version")) {
         std::cout << "Skipping the native Windows SIP oracle under Wine\n";
@@ -42,6 +64,12 @@ int wmain(int argc, wchar_t** argv) {
     if (oracle) CompareWindows(original);
     S::SignatureDiagnostic diagnostic;
     Require(S::VerifySignature(original, testKey, &diagnostic), "Signed fixture rejected");
+    if (signerInfoOnly) {
+        reportSha1 = true;
+        Require(!S::VerifySignature(original, testKey, &diagnostic) &&
+            std::wstring_view(diagnostic.stage) == L"SHA-256 signature required", "SHA-1 signer accepted");
+        reportSha1 = false;
+    }
     auto wrongKey = testKey;
     wrongKey[0] ^= 1;
     Require(!S::VerifySignature(original, wrongKey, &diagnostic) &&
