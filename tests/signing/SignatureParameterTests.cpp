@@ -30,7 +30,7 @@ int main() {
         const auto error = GetLastError();
         const bool valid = current == Mode::Valid;
         const bool local = current == Mode::Empty || current == Mode::Oversized;
-        if (result != valid || (!valid && error != (local ? ERROR_SUCCESS : ERROR_INVALID_DATA)) ||
+        if (result != valid || (!valid && error != static_cast<DWORD>(local ? ERROR_SUCCESS : ERROR_INVALID_DATA)) ||
             (valid && (output.size() != 1 || output[0] != 42))) {
             throw std::runtime_error("Signature parameter diagnostic mismatch");
         }

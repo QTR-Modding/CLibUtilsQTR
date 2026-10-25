@@ -127,15 +127,15 @@ inline bool VerifySignature(const SignedFile& file, const SigningKeyHash& expect
     if (!CryptMsgControl(signature.message, 0, CMSG_CTRL_VERIFY_SIGNATURE,
             signature.signer->pCertInfo)) return SignatureFailure(diagnostic, L"RSA signature", GetLastError());
 
-    std::vector<BYTE> contentType, content, algorithm;
+    std::vector<BYTE> contentType, content, signerDetails;
     if (!signature.Parameter(CMSG_INNER_CONTENT_TYPE_PARAM, contentType))
         return SignatureFailure(diagnostic, L"signed content type", GetLastError());
     if (contentType.back() != 0 || std::strcmp(reinterpret_cast<const char*>(contentType.data()),
             SPC_INDIRECT_DATA_OBJID) != 0) return SignatureFailure(diagnostic, L"Authenticode content required");
-    if (!signature.Parameter(CMSG_SIGNER_HASH_ALGORITHM_PARAM, algorithm))
+    if (!signature.Parameter(CMSG_SIGNER_INFO_PARAM, signerDetails))
         return SignatureFailure(diagnostic, L"signer hash algorithm", GetLastError());
-    if (algorithm.size() < sizeof(CRYPT_ALGORITHM_IDENTIFIER) ||
-        std::strcmp(reinterpret_cast<CRYPT_ALGORITHM_IDENTIFIER*>(algorithm.data())->pszObjId,
+    if (signerDetails.size() < sizeof(CMSG_SIGNER_INFO) ||
+        std::strcmp(reinterpret_cast<CMSG_SIGNER_INFO*>(signerDetails.data())->HashAlgorithm.pszObjId,
             szOID_NIST_sha256) != 0) return SignatureFailure(diagnostic, L"SHA-256 signature required");
     if (!signature.Parameter(CMSG_CONTENT_PARAM, content))
         return SignatureFailure(diagnostic, L"signed content", GetLastError());
