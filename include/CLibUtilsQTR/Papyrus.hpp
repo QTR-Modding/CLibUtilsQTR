@@ -36,6 +36,20 @@ namespace Papyrus {
         return false;
     }
 
+    template <class... Args>
+    bool CallMethod(RE::TESForm* form, const std::string_view scriptClass, const std::string_view method, Args... a_args) {
+        const auto skyrimVM = RE::SkyrimVM::GetSingleton();
+        if (const auto vm = skyrimVM ? skyrimVM->impl : nullptr) {
+            auto object = GetObjectPtr(form, std::string(scriptClass).c_str(), true);
+            RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
+            auto args = RE::MakeFunctionArguments(std::forward<Args>(a_args)...);
+            const bool dispatched = vm->DispatchMethodCall(object, std::string(method).c_str(), args, callback);
+            delete args;
+            return dispatched;
+        }
+        return false;
+    }
+
     inline RE::BSScript::Internal::AttachedScript* GetAttachedScript(const std::string& script_name,
                                                                      RE::TESForm* a_form) {
         if (auto* virtualMachine = RE::BSScript::Internal::VirtualMachine::GetSingleton()) {
