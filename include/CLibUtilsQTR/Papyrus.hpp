@@ -24,8 +24,7 @@ namespace Papyrus {
 
     template <class... Args>
     bool CallFunction(const std::string_view functionClass, const std::string_view function, Args... a_args) {
-        const auto skyrimVM = RE::SkyrimVM::GetSingleton();
-        if (const auto vm = skyrimVM ? skyrimVM->impl : nullptr) {
+        if (const auto vm = VM::GetSingleton()) {
             RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
             auto args = RE::MakeFunctionArguments(std::forward<Args>(a_args)...);
             auto res = vm->DispatchStaticCall(std::string(functionClass).c_str(), std::string(function).c_str(), args,
@@ -38,8 +37,7 @@ namespace Papyrus {
 
     template <class... Args>
     bool CallMethod(RE::TESForm* form, const std::string_view scriptClass, const std::string_view method, Args... a_args) {
-        const auto skyrimVM = RE::SkyrimVM::GetSingleton();
-        if (const auto vm = skyrimVM ? skyrimVM->impl : nullptr) {
+        if (const auto vm = VM::GetSingleton()) {
             auto object = GetObjectPtr(form, std::string(scriptClass).c_str(), true);
             RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
             auto args = RE::MakeFunctionArguments(std::forward<Args>(a_args)...);
