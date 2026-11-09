@@ -23,6 +23,8 @@ set(headers ${headers}
 	include/CLibUtilsQTR/Serialization.hpp
 	include/CLibUtilsQTR/StringHelpers.hpp
 	include/CLibUtilsQTR/Tasker.hpp
+	include/CLibUtilsQTR/ThreadPool.hpp
+	include/CLibUtilsQTR/SpeedProfiler.hpp
 	include/CLibUtilsQTR/Ticker.hpp
 	include/CLibUtilsQTR/PresetHelpers/Config.hpp
 	include/CLibUtilsQTR/PresetHelpers/Getters.hpp
