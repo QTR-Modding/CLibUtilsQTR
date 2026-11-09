@@ -192,7 +192,7 @@ namespace BoundingBox {
 
     // Missing model bounds can optionally use worldBound, then a unit-radius cube at the reference position.
     inline bool GetOBB(const RE::TESObjectREFR* obj, DirectX::BoundingOrientedBox& out, const bool allowAABB = false,
-                       const bool allowFallback = false) {
+                       const bool allowWorldBoundFallback = false, const bool allowPositionFallback = false) {
         if (allowAABB && GetOBBFromHavok(obj, out)) {
             return true;
         }
@@ -202,12 +202,12 @@ namespace BoundingBox {
 
         const RE::NiPoint3 size = maxLocal - minLocal;
         if (std::abs(size.x) < 1e-5f && std::abs(size.y) < 1e-5f && std::abs(size.z) < 1e-5f) {
-            if (!allowFallback) {
+            const auto node = allowWorldBoundFallback ? obj->GetCurrent3D() : nullptr;
+            const bool hasWorldBound = node && node->worldBound.radius > 0.f;
+            if (!hasWorldBound && !allowPositionFallback) {
                 return false;
             }
             constexpr float fallbackRadius = 1.f;
-            const auto node = obj->GetCurrent3D();
-            const bool hasWorldBound = node && node->worldBound.radius > 0.f;
             const auto center = hasWorldBound ? node->worldBound.center : obj->GetPosition();
             const float radius = hasWorldBound ? node->worldBound.radius : fallbackRadius;
             out.Center = {center.x, center.y, center.z};
