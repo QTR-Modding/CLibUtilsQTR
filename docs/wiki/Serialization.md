@@ -1,5 +1,53 @@
 # Serialization
 
+## Saving vectors and maps
+
+Register your containers once during plugin initialization. Each registration supplies a unique SKSE record tag and a record version.
+
+```cpp
+#include <CLibUtilsQTR/Serialization.hpp>
+
+namespace SaveData {
+    using Serialization::V2::Type;
+
+    inline Serialization::V2::Registry records;
+    inline std::vector<RE::FormID> discoveredBooks;
+    inline std::map<RE::FormID, std::uint32_t> timesRead;
+
+    bool Register();
+    void Save(SKSE::SerializationInterface* skse);
+    void Load(SKSE::SerializationInterface* skse);
+    void Revert(SKSE::SerializationInterface*);
+}
+
+bool SaveData::Register() {
+    return records.Register('DISC', 1, discoveredBooks, Type::FormID) &&
+           records.Register('READ', 1, timesRead, Type::FormID, Type::Number);
+}
+
+void SaveData::Save(SKSE::SerializationInterface* skse) {
+    if (!records.Save(skse)) {
+        SKSE::log::error("Could not save book data.");
+    }
+}
+
+void SaveData::Load(SKSE::SerializationInterface* skse) {
+    if (!records.Load(skse)) {
+        SKSE::log::error("Could not load all book data.");
+    }
+}
+
+void SaveData::Revert(SKSE::SerializationInterface*) {
+    records.Clear();
+}
+```
+
+Check the result of `SaveData::Register()`, then install the three functions as your SKSE save, load, and revert callbacks. Keep the containers alive while registered and synchronize access in your plugin.
+
+Vectors take one type. `std::map` and `std::unordered_map` take the key type first and the value type second. Use `Number` for arithmetic types, `String` for `std::string`, and `FormID` for IDs that SKSE should resolve on load. In the example, book IDs are resolved and read counts stay as saved. An entry is skipped if a FormID fails to resolve. Loading replaces the contents of the registered containers.
+
+## Legacy string helpers
+
 The existing string helpers read and write a paired binary representation inside an SKSE record:
 
 ```cpp

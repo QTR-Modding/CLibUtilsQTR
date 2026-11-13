@@ -1,9 +1,9 @@
 #pragma once
 #include <SKSE/SKSE.h>
-#include <array>
 #include <functional>
 #include <limits>
 #include <type_traits>
+#include <unordered_map>
 #include <map>
 #include <mutex>
 
@@ -117,21 +117,30 @@ namespace Serialization {
 namespace Serialization::V2 {
     enum class Type { Number, String, FormID };
 
+    template <class T>
+    concept Field = std::is_arithmetic_v<T> || std::is_same_v<T, std::string>;
+
+    template <class T>
+    concept MapContainer =
+        std::is_same_v<T, std::map<typename T::key_type, typename T::mapped_type,
+                                  typename T::key_compare, typename T::allocator_type>> ||
+        std::is_same_v<T, std::unordered_map<typename T::key_type, typename T::mapped_type,
+                                            typename T::hasher, typename T::key_equal, typename T::allocator_type>>;
+
     class Registry {
     public:
-        template <class T, class Allocator>
+        template <Serialization::V2::Field T, class Allocator>
         bool Register(std::uint32_t tag, std::uint32_t version, std::vector<T, Allocator>& data, Type type);
 
-        template <class Map>
-            requires requires { typename Map::mapped_type; }
+        template <Serialization::V2::MapContainer Map>
+            requires (Field<typename Map::key_type> && Field<typename Map::mapped_type>)
         bool Register(std::uint32_t tag, std::uint32_t version, Map& data, Type keyType, Type valueType);
 
         bool Save(const SKSE::SerializationInterface* skse) const;
         bool Load(const SKSE::SerializationInterface* skse) const;
+        void Clear() const;
 
     private:
-        enum class ReadResult { Ok, MissingForm, Invalid };
-
         struct Record {
             std::uint32_t version;
             std::function<void()> clear;
@@ -142,32 +151,31 @@ namespace Serialization::V2 {
         template <class T>
         static constexpr bool Supports(Type type);
         template <class T>
-        static constexpr std::uint32_t FieldSize();
-        template <class T>
         static bool Write(const SKSE::SerializationInterface* skse, const T& value, std::uint32_t& remaining);
         template <class T>
-        static ReadResult Read(const SKSE::SerializationInterface* skse, T& value, Type type,
-                               std::uint32_t& remaining);
-        template <class Container, class... Types>
-        bool RegisterContainer(std::uint32_t tag, std::uint32_t version, Container& data, Types... types);
+        static bool Read(const SKSE::SerializationInterface* skse, T& value, std::uint32_t& remaining);
+        template <class T>
+        static bool Resolve(const SKSE::SerializationInterface* skse, T& value, Type type);
+        template <class Container>
+        bool RegisterContainer(std::uint32_t tag, std::uint32_t version, Container& data, Type type, Type valueType = Type::Number);
         template <class Container>
         static bool SaveContainer(const SKSE::SerializationInterface* skse, const Container& data);
-        template <class Container, class... Types>
+        template <class Container>
         static bool LoadContainer(const SKSE::SerializationInterface* skse, Container& data,
-                                  std::uint32_t remaining, Types... types);
+                                  std::uint32_t remaining, Type type, Type valueType);
 
         std::map<std::uint32_t, Record> records;
     };
 }
 
-template <class T, class Allocator>
+template <Serialization::V2::Field T, class Allocator>
 bool Serialization::V2::Registry::Register(std::uint32_t tag, std::uint32_t version,
                                           std::vector<T, Allocator>& data, Type type) {
     return Supports<T>(type) && RegisterContainer(tag, version, data, type);
 }
 
-template <class Map>
-    requires requires { typename Map::mapped_type; }
+template <Serialization::V2::MapContainer Map>
+    requires (Serialization::V2::Field<typename Map::key_type> && Serialization::V2::Field<typename Map::mapped_type>)
 bool Serialization::V2::Registry::Register(std::uint32_t tag, std::uint32_t version, Map& data,
                                           Type keyType, Type valueType) {
     return Supports<typename Map::key_type>(keyType) && Supports<typename Map::mapped_type>(valueType) &&
@@ -188,82 +196,66 @@ constexpr bool Serialization::V2::Registry::Supports(Type type) {
 }
 
 template <class T>
-constexpr std::uint32_t Serialization::V2::Registry::FieldSize() {
-    if constexpr (std::is_same_v<T, std::string>) {
-        return sizeof(std::uint32_t);
-    } else if constexpr (std::is_same_v<T, bool>) {
-        return sizeof(std::uint8_t);
-    } else {
-        return sizeof(T);
-    }
-}
-
-template <class T>
 bool Serialization::V2::Registry::Write(const SKSE::SerializationInterface* skse, const T& value,
                                        std::uint32_t& remaining) {
-    constexpr auto size = FieldSize<T>();
-    if (size > remaining) {
-        return false;
-    }
-    remaining -= size;
     if constexpr (std::is_same_v<T, std::string>) {
-        if (value.size() > remaining) {
+        if (value.size() > remaining || remaining - value.size() < sizeof(std::uint32_t)) {
             return false;
         }
         const auto length = static_cast<std::uint32_t>(value.size());
         remaining -= length;
-        return skse->WriteRecordData(length) && (!length || skse->WriteRecordData(value.data(), length));
+        return Write(skse, length, remaining) && (!length || skse->WriteRecordData(value.data(), length));
     } else if constexpr (std::is_same_v<T, bool>) {
-        return skse->WriteRecordData(static_cast<std::uint8_t>(value));
+        return Write(skse, static_cast<std::uint8_t>(value), remaining);
     } else {
+        if (sizeof(T) > remaining) {
+            return false;
+        }
+        remaining -= sizeof(T);
         return skse->WriteRecordData(value);
     }
 }
 
 template <class T>
-auto Serialization::V2::Registry::Read(const SKSE::SerializationInterface* skse, T& value, Type type,
-                                      std::uint32_t& remaining) -> ReadResult {
-    constexpr auto size = FieldSize<T>();
-    if (size > remaining) {
-        return ReadResult::Invalid;
-    }
+bool Serialization::V2::Registry::Read(const SKSE::SerializationInterface* skse, T& value,
+                                      std::uint32_t& remaining) {
     if constexpr (std::is_same_v<T, std::string>) {
         std::uint32_t length;
-        if (skse->ReadRecordDataEx(remaining, length) != size || length > remaining) {
-            return ReadResult::Invalid;
+        if (!Read(skse, length, remaining) || length > remaining) {
+            return false;
         }
         value.resize(length);
-        if (length && skse->ReadRecordDataEx(remaining, value.data(), length) != length) {
-            return ReadResult::Invalid;
-        }
+        return !length || skse->ReadRecordDataEx(remaining, value.data(), length) == length;
     } else if constexpr (std::is_same_v<T, bool>) {
         std::uint8_t byte;
-        if (skse->ReadRecordDataEx(remaining, byte) != size || byte > 1) {
-            return ReadResult::Invalid;
+        if (!Read(skse, byte, remaining) || byte > 1) {
+            return false;
         }
         value = byte != 0;
+        return true;
     } else {
-        if (skse->ReadRecordDataEx(remaining, value) != size) {
-            return ReadResult::Invalid;
-        }
-        if constexpr (std::is_same_v<T, RE::FormID>) {
-            if (type == Type::FormID && !skse->ResolveFormID(value, value)) {
-                return ReadResult::MissingForm;
-            }
-        }
+        return sizeof(T) <= remaining && skse->ReadRecordDataEx(remaining, value) == sizeof(T);
     }
-    return ReadResult::Ok;
 }
 
-template <class Container, class... Types>
+template <class T>
+bool Serialization::V2::Registry::Resolve(const SKSE::SerializationInterface* skse, T& value, Type type) {
+    if constexpr (std::is_same_v<T, RE::FormID>) {
+        return type != Type::FormID || skse->ResolveFormID(value, value);
+    } else {
+        return true;
+    }
+}
+
+template <class Container>
 bool Serialization::V2::Registry::RegisterContainer(std::uint32_t tag, std::uint32_t version,
-                                                   Container& data, Types... types) {
+                                                   Container& data, Type type, Type valueType) {
     return records.try_emplace(tag, Record{
         version,
         [&data] { data.clear(); },
         [&data](const SKSE::SerializationInterface* skse) { return SaveContainer(skse, data); },
-        [&data, types...](const SKSE::SerializationInterface* skse, std::uint32_t length) {
-            return LoadContainer(skse, data, length, types...);
+        [&data, type, valueType](const SKSE::SerializationInterface* skse, std::uint32_t length) {
+            return LoadContainer(skse, data, length, type, valueType);
         }
     }).second;
 }
@@ -275,7 +267,7 @@ bool Serialization::V2::Registry::SaveContainer(const SKSE::SerializationInterfa
         return false;
     }
     for (const auto& entry : data) {
-        if constexpr (requires { typename Container::mapped_type; }) {
+        if constexpr (MapContainer<Container>) {
             if (!Write(skse, entry.first, remaining) || !Write(skse, entry.second, remaining)) {
                 return false;
             }
@@ -288,56 +280,50 @@ bool Serialization::V2::Registry::SaveContainer(const SKSE::SerializationInterfa
     return true;
 }
 
-template <class Container, class... Types>
+template <class Container>
 bool Serialization::V2::Registry::LoadContainer(const SKSE::SerializationInterface* skse, Container& data,
-                                               std::uint32_t remaining, Types... types) {
+                                               std::uint32_t remaining, Type type, Type valueType) {
     std::uint32_t count;
-    if (Read(skse, count, Type::Number, remaining) != ReadResult::Ok) {
+    if (!Read(skse, count, remaining)) {
         return false;
     }
 
-    constexpr bool isMap = requires { typename Container::mapped_type; };
-    constexpr auto minEntrySize = [] {
-        if constexpr (isMap) {
-            return FieldSize<typename Container::key_type>() + FieldSize<typename Container::mapped_type>();
+    auto loaded = [&data] {
+        if constexpr (!MapContainer<Container>) {
+            return Container(data.get_allocator());
+        } else if constexpr (requires { data.key_comp(); }) {
+            return Container(data.key_comp(), data.get_allocator());
         } else {
-            return FieldSize<typename Container::value_type>();
+            Container result(0, data.hash_function(), data.key_eq(), data.get_allocator());
+            result.max_load_factor(data.max_load_factor());
+            return result;
         }
     }();
-    if (count > remaining / minEntrySize) {
-        return false;
-    }
-
-    const std::array kinds{types...};
     for (std::uint32_t i = 0; i < count; ++i) {
-        if constexpr (isMap) {
+        if constexpr (MapContainer<Container>) {
             typename Container::key_type key;
             typename Container::mapped_type value;
-            const auto keyResult = Read(skse, key, kinds[0], remaining);
-            if (keyResult == ReadResult::Invalid) {
+            if (!Read(skse, key, remaining) || !Read(skse, value, remaining)) {
                 return false;
             }
-            const auto valueResult = Read(skse, value, kinds[1], remaining);
-            if (valueResult == ReadResult::Invalid) {
-                return false;
-            }
-            if (keyResult == ReadResult::Ok && valueResult == ReadResult::Ok) {
-                data.insert_or_assign(std::move(key), std::move(value));
+            if (Resolve(skse, key, type) && Resolve(skse, value, valueType)) {
+                loaded.insert_or_assign(std::move(key), std::move(value));
             }
         } else {
             typename Container::value_type value;
-            switch (Read(skse, value, kinds[0], remaining)) {
-            case ReadResult::Ok:
-                data.push_back(std::move(value));
-                break;
-            case ReadResult::MissingForm:
-                break;
-            case ReadResult::Invalid:
+            if (!Read(skse, value, remaining)) {
                 return false;
+            }
+            if (Resolve(skse, value, type)) {
+                loaded.push_back(std::move(value));
             }
         }
     }
-    return remaining == 0;
+    if (remaining != 0) {
+        return false;
+    }
+    data.swap(loaded);
+    return true;
 }
 
 inline bool Serialization::V2::Registry::Save(const SKSE::SerializationInterface* skse) const {
@@ -351,9 +337,7 @@ inline bool Serialization::V2::Registry::Save(const SKSE::SerializationInterface
 }
 
 inline bool Serialization::V2::Registry::Load(const SKSE::SerializationInterface* skse) const {
-    for (const auto& [tag, record] : records) {
-        record.clear();
-    }
+    Clear();
     bool success = true;
     std::uint32_t tag, version, length;
     while (skse->GetNextRecordInfo(tag, version, length)) {
@@ -362,11 +346,15 @@ inline bool Serialization::V2::Registry::Load(const SKSE::SerializationInterface
             continue;
         }
         const auto& record = entry->second;
-        record.clear();
         if (!record.load(skse, length)) {
-            record.clear();
             success = false;
         }
     }
     return success;
+}
+
+inline void Serialization::V2::Registry::Clear() const {
+    for (const auto& [tag, record] : records) {
+        record.clear();
+    }
 }
